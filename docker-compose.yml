@@ -1,0 +1,8 @@
+version: "3"
+services:
+  backend:
+    container_name: gamafication-node-backend
+    build: .
+    ports:
+      - 1147:8000
+    restart: always

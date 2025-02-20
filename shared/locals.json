@@ -1,0 +1,6 @@
+{
+    "errorInternal" : "Internal Server Error",
+    "errorReferance" : "This is referance error",
+    "errorType" : "This is type error",
+    "notFound" : "Endpoint not found"
+}

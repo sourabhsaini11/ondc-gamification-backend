@@ -1,0 +1,10 @@
+version: "3"
+services:
+  backend:
+    container_name: wil-newsletter-backend
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    ports:
+      - 1147:8001
+    restart: always
