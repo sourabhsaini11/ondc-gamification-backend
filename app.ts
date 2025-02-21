@@ -42,7 +42,7 @@ const createServer = (): express.Application => {
     user: "postgres",
     host: "localhost",
     database: "gamafication",
-    password: "postgres",
+    password: "1234",
     port: 5432,
   })
 
