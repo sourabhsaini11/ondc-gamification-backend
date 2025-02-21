@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model OrderData {
+  id                Int    @id @default(autoincrement())
+  uid               String @default("")
+  name              String
+//   orderId           String @unique @default("")
+  orderId           String  @default("")
+  orderStatus       String @default("Pending")
+  timestampCreated  String @default("")
+  timestampUpdated  String @default("")
+  category          String @default("")
+  buyerAppId        String @default("")
+  basePrice         String @default("0")
+  shippingCharges   String @default("0")
+  taxes             String @default("0")
+  discount          String @default("0")
+  convenienceFee    String @default("0")
+  sellerId          String @default("")
+}
+
+model Leaderboard {
+  id            Int     @id @default(autoincrement())
+  uid           String  @unique
+  name          String
+  basePoints    Int
+  gmvPoints     Int
+  highValueBonus Int
+  totalPoints   Int
+  updatedAt     DateTime @updatedAt
+}
+
