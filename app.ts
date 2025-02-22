@@ -3,9 +3,10 @@ import express, { Application, Request, Response, NextFunction } from "express"
 import helmet from "helmet"
 import cors from "cors"
 import pg from "pg"
-import testRoutes from "./routes/csv"
+import routes from "./routes/csv"
 import HttpException, { sanitize } from "./shared/http-exception"
 import locals from "./shared/locals.json"
+import { leaderboardTrigger } from "./services/points.servce"
 
 const createServer = (): express.Application => {
   const app: Application = express()
@@ -14,7 +15,7 @@ const createServer = (): express.Application => {
   app.use(express.json())
   app.use(express.urlencoded({ extended: true }))
 
-  app.use("/csv", testRoutes)
+  app.use("/api", routes)
 
   // eslint-disable-next-line no-unused-vars
   app.get("/", async (_req: Request, res: Response): Promise<Response> => {
@@ -50,6 +51,8 @@ const createServer = (): express.Application => {
     .connect()
     .then(() => console.log("Connected to PostgreSQL"))
     .catch((err: any) => console.error("Connection error", err))
+
+  leaderboardTrigger()
 
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

@@ -11,39 +11,40 @@ model OrderData {
   id                Int      @id @default(autoincrement())
   uid               String   @default("")
   name              String
-  orderId           String   @default("")
-  orderStatus       String   @default("Pending")
-  timestampCreated  DateTime @default(now())  // Change to DateTime
-  timestampUpdated  DateTime @default(now())  // Change to DateTime
+  order_id           String   @default("")
+  order_status       String   @default("Pending")
+  timestamp_created  DateTime @default(now())
+  timestamp_updated  DateTime @default(now())
   category          String   @default("")
-  buyerAppId        String   @default("")
-  basePrice         String   @default("0")
-  shippingCharges   String   @default("0")
-  taxes             String   @default("0")
-  discount          String   @default("0")
-  convenienceFee    String   @default("0")
-  sellerId          String   @default("")
-  streakcount       String   @default("0")
-  gameId            String   @default("")
-  points            String   @default("0")
-  streakMaintain    String   @default("")
-  highestGmvForDay  String   @default("")
-  highestOrdersForDay  String   @default("")
-  gmv               String   @default("")
+  buyer_app_id        String   @default("")
+  base_price         Float @default(0.00)
+  shipping_charges   Float @default(0.00)
+  taxes             Float @default(0.00)
+  discount          Float @default(0.00)
+  convenience_fee    Float @default(0.00)
+  seller_id          String   @default("")
+  streak_count       Int   @default(0)
+  last_streak_date   DateTime
+  updated_by_lambda   DateTime
+  game_id            String   @default("")
+  points            Float @default(0.00)
+  streak_maintain    Boolean @default(false)
+  entry_updated    Boolean @default(false)
+  highest_gmv_for_day  Boolean @default(false)
+  highest_orders_for_day  Boolean @default(false)
+  gmv               Int   @default(0)
+
+  @@map("orderData")
 }
 
 
 model Leaderboard {
-  id            Int     @id @default(autoincrement())
-  uid           String  @unique
-  name          String
-  basePoints    Int
-  gmvPoints     Int
-  highValueBonus Int
-  totalPoints   Int
-  streak        Int
-  streak_maintain Boolean
-  last_streak_date DateTime
-  updatedAt     DateTime @updatedAt
+  id               Int     @id @default(autoincrement())
+  game_id          String  @unique @default("")
+  total_points     Int
+  total_orders     Int
+  total_gmv        Int
+
+  @@map("leaderboard")
 }
 
