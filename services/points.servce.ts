@@ -16,7 +16,6 @@ export const aggregatePointsSummary = async () => {
 
     // Upsert aggregated data into leaderboard
     for (const { game_id, total_points, total_orders, total_gmv } of aggregatedData) {
-      console.log("game_id, total_points, total_orders, total_gmv", game_id, total_points, total_orders, total_gmv)
       const data = {
         game_id,
         total_points: Number(total_points),
@@ -73,8 +72,8 @@ AND timestamp_created < ('2025-02-05'::DATE + INTERVAL '1 day');
                 SUM(gmv) AS total_order_gmv,
                 COUNT(CASE WHEN order_status NOT IN ('cancelled', 'partially_cancelled') THEN 1 END) AS valid_orders
             FROM public."orderData"
-            WHERE timestamp_created >= '2025-02-05'::DATE
-            AND timestamp_created < ('2025-02-05'::DATE + INTERVAL '1 day')
+            WHERE timestamp_created >= '${todayDate}'::DATE
+            AND timestamp_created < ('${todayDate}'::DATE + INTERVAL '1 day')
             GROUP BY game_id, order_id
         )
         SELECT 

@@ -1,7 +1,8 @@
 import fs from "fs"
 import csvParser from "csv-parser"
 import { PrismaClient } from "@prisma/client"
-import moment from "moment"
+import moment from "moment-timezone"
+
 // import dayjs from "dayjs"
 
 const prisma = new PrismaClient()
@@ -120,19 +121,24 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
           )
 
           const orderId = normalizedRow["order_id"]
-          const timestampCreated = new Date(String(normalizedRow["timestamp_created"]))
+          const timestampStr: any = normalizedRow["timestamp_created"] // Example: "2025-02-24 2:00:00"
+          const timestampCreated: Date = moment
+            .tz(timestampStr, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata")
+            .add(5, "hours")
+            .add(30, "minutes")
+            .toDate()
 
-          if (isNaN(timestampCreated.getTime())) {
-            console.log(`Invalid timestamp for order ${orderId}`)
-            return
-          }
+          // if (isNaN(timestampCreated.getTime())) {
+          //   console.log(`Invalid timestamp for order ${orderId}`)
+          //   return
+          // }
 
           records.push({
             uid: String(normalizedRow["phone_number"])?.trim(),
             name: normalizedRow["name"],
             order_id: orderId,
             order_status: String(normalizedRow["order_status"])?.toLowerCase(),
-            timestamp_created: timestampCreated,
+            timestamp_created: new Date(timestampCreated),
             timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])),
             category: normalizedRow["category"],
             buyer_app_id: normalizedRow["buyer_app_id"],
@@ -144,8 +150,6 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             seller_id: normalizedRow["seller_id"],
             uploaded_by: userId,
           })
-
-          console.log("records", records)
         } catch (err) {
           console.error("❌ Error processing row:", err)
         }
@@ -156,8 +160,6 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             console.log("⚠️ No valid records found in the CSV file")
             return resolve()
           }
-
-          // console.log("records", records)
 
           const newOrders: any = []
           const cancellations: any = []
@@ -183,9 +185,6 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
 
           await updateHighestGmvAndOrdersForDay()
 
-          // console.log("newOrders", newOrders)
-          // console.log("cancellations", cancellations)
-
           console.log("✅ CSV data stored successfully")
           resolve()
         } catch (error) {
@@ -202,81 +201,6 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
       })
   })
 }
-
-// const updateLeaderboard = async () => {
-//   try {
-//     // await prisma.$executeRaw`TRUNCATE TABLE "Leaderboard";`
-
-//     const users = await prisma.orderData.findMany()
-//     const myMap = new Map()
-
-//     const leaderboardData = users.map((user: any) => {
-//       let userOrderData = myMap.get(user.uid)
-
-//       const currentDate = new Date(user.timestamp_created)
-//       const currentDay = currentDate.toISOString().split("T")[0] // Format as YYYY-MM-DD
-
-//       // If the user has made an order before today, check and add repeat order points
-//       if (userOrderData && userOrderData.lastOrderDate === currentDay) {
-//         // Increment order count for today
-//         userOrderData.orderCount += 1
-//       } else {
-//         // If it's the first order of the day, reset the order count and update the last order date
-//         userOrderData = {
-//           orderCount: 1,
-//           lastOrderDate: currentDay,
-//           totalPoints: 0,
-//         }
-//       }
-
-//       // Update the Map with the latest data for the user
-//       myMap.set(user.uid, userOrderData)
-
-//       const basePoints = 10
-//       const gmv =
-//         parseFloat(user.base_price) +
-//         parseFloat(user.shipping_charges) +
-//         parseFloat(user.taxes) -
-//         parseFloat(user.discount) +
-//         parseFloat(user.convenience_fee)
-//       const gmvPoints = Math.floor(gmv / 10)
-//       const highValueBonus = gmv > 1000 ? 50 : 0
-//       const { streakcount, streakMaintain, currentTimestamp } = ProcessSteak(
-//         new Date(user.timestamp_created),
-//         new Date(user.timestamp_created),
-//         Number(user.streak_count),
-//       )
-//       let repeatOrderPoints = 0
-//       if (userOrderData.orderCount > 1) {
-//         // Increment points for each repeat order (2nd, 3rd, etc.)
-//         repeatOrderPoints = 15 + (userOrderData.orderCount - 2) * 5 // 15 points for the 2nd order, 20 for 3rd, etc.
-//       }
-
-//       const Points = CalculatePoints(gmv, Number(user.streak_count), user.uid)
-//       const totalPoints = basePoints + gmvPoints + highValueBonus + Number(Points) + repeatOrderPoints
-//       return {
-//         uid: user.uid,
-//         name: user.name,
-//         basePoints,
-//         gmvPoints,
-//         highValueBonus,
-//         totalPoints,
-//         streak: streakcount,
-//         streak_maintain: streakMaintain,
-//         last_streak_date: currentTimestamp,
-//         updatedAt: new Date(),
-//       }
-//     })
-
-//     // await prisma.leaderboard.createMany({ data: leaderboardData, skipDuplicates: true })
-//     console.log("🏆 Leaderboard updated successfully:", leaderboardData)
-//   } catch (error) {
-//     console.error("❌ Error updating leaderboard:", error)
-//     throw error
-//   }
-// }
-
-// console.log("updateLeaderboard", updateLeaderboard)
 
 export const getOrders = async (page: number = 1, pageSize: number = 100) => {
   try {
@@ -303,25 +227,6 @@ export const getOrders = async (page: number = 1, pageSize: number = 100) => {
     await prisma.$disconnect()
   }
 }
-
-// const ProcessSteak = (lastStreakDate: Date, currentTimestamp: Date, streakcount: number) => {
-//   let streakMaintain = true
-
-//   if (lastStreakDate) {
-//     const dayDifference = Math.floor((currentTimestamp.getTime() - lastStreakDate.getTime()) / (1000 * 3600 * 24))
-
-//     if (dayDifference === 1) {
-//       streakcount += 1 // Increment streak count for consecutive days
-//     } else if (dayDifference > 1) {
-//       streakcount = 1 // Reset streak count if the difference is more than 1 day
-//       streakMaintain = false
-//     } else if (dayDifference < 1) {
-//       streakcount = streakcount || 1 // Ensure streak count is at least 1 if no difference
-//     }
-//   }
-
-//   return { streakMaintain, streakcount, currentTimestamp }
-// }
 
 // const CalculatePoints = async (gmv: number, streakCount: number, uid: string) => {
 //   gmv = Math.max(0, parseFloat(gmv.toString()))
@@ -400,8 +305,6 @@ const processNewOrders = async (orders: any) => {
           select: { game_id: true, last_streak_date: true, streak_count: true },
         })
 
-        // console.log("existingUser", existingUser)
-
         let game_id,
           lastStreakDate,
           streakCount = 1
@@ -431,7 +334,6 @@ const processNewOrders = async (orders: any) => {
         const points = await calculatePoints(gmv, uid, streakCount)
 
         // Handle streak logic
-        // console.log("streakMaintain", lastStreakDate, timestampCreated, streakCount)
         const { streakMaintain, newStreakCount, newLastStreakDate }: any = processStreak(
           lastStreakDate,
           timestampCreated,
