@@ -1,33 +1,25 @@
-import { Request, Response } from "express";
-import { prisma } from "../../prisma/index";
-
-
+import { Request, Response } from "express"
+import authService from "../../services/auth.service"
 
 const userController = {
-    async login (req: Request, res: Response) {
-        const {email, name, password} = req.body;
-        try {
-            const user = await prisma.user.findUnique({
-                where: {
-                    email: email,
-                }
-            })
-            if(user){
-                return res.status(400).json({message: "User Already exist with this email"})
-            } else {
-                const user = await prisma.user.create({
-                    data: {
-                        email: email,
-                        name: name,
-                        password: password  
-                    }})
-                    return res.status(200).json({message: "User createdd successfully", id: user.id})
-            }
-        } catch (error: any) {
-            return res.status(500).json({error: error.message})
-        }
-        
-        
+  async register(req: Request, res: Response) {
+    const { email, name, password } = req.body
+    try {
+      const user = await authService.register(email, name, password)
+      return res.status(201).json({ message: "User registered successfully", user })
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message })
+    }
+  },
+
+  async login(req: Request, res: Response) {
+    const { email, password } = req.body
+    try {
+      const data = await authService.login(email, password)
+      return res.status(200).json({ message: "Login successful", ...data })
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message })
+    }
+  },
 }
-}
-export default userController;
+export default userController
