@@ -1,0 +1,16 @@
+Name,Order ID,Order Status,Timestamp Created,Timestamp Updated,Category,Buyer App ID,Base Price,Shipping Charges,Taxes,Discount,Conveniance fee,Seller ID,phone number
+Akanksha1,200-466-912,Created,2025-02-24 2:00:00,2025-02-24 8:50:51,Grocery,Tata Digital,1200,0,0,0,0,Himira,9946509765
+Akanksha1,200-466-912,Created,2025-02-24 2:00:00,2025-02-24 5:05:49,Grocery,Tata Digital,1200,0,0,0,0,Himira,9946509765
+surya,200-466-919,Created,2025-02-24 2:00:00,2025-02-24 8:50:50,Grocery,Tata Digital,100,50,50,0,0,Himira,9946503567
+surya,200-466-919,Created,2025-02-24 2:00:00,2025-02-24 5:05:49,Grocery,Tata Digital,100,50,50,0,0,Himira,9946503567
+surya,200-466-913,Created,2025-02-24 2:00:00,2025-02-24 8:50:51,Grocery,Tata Digital,50,0,0,0,0,Himira,9946500861
+surya,200-466-903,Created,2025-02-24 2:00:00,2025-02-24 5:05:49,Grocery,Tata Digital,50,0,0,0,0,Himira,9946500861
+Amit,200-466-908,Created,2025-02-24 2:00:00,2025-02-24 8:50:51,Grocery,Tata Digital,900,0,0,0,0,Himira,9946502342
+Amit,200-466-908,Created,2025-02-24 2:00:00,2025-02-24 5:05:49,Grocery,Tata Digital,900,0,0,0,0,Himira,9946502342
+Virat,200-466-905,Created,2025-02-24 2:00:00,2025-02-24 8:50:51,Grocery,Tata Digital,120,50,50,0,0,XYZ Seller,9946509999
+Virat,200-466-905,Created,2025-02-24 2:00:00,2025-02-24 5:05:49,Grocery,Tata Digital,120,50,50,0,0,XYZ Seller,9946509999
+Akanksha1,200-466-902,Created,2025-02-24 2:00:00,2025-02-24 5:06:12,Grocery,Tata Digital,1200,0,0,0,0,Himira,9946509765
+Virat,200-466-905,Created,2025-02-24 2:00:00,2025-02-24 5:06:12,Grocery,Tata Digital,120,50,50,0,0,XYZ Seller,9946509999
+Sumit,200-466-908,Created,2025-02-24 2:00:00,2025-02-24 5:06:12,Grocery,Tata Digital,900,0,0,0,0,Himira,9946502342
+surya,200-466-903,Created,2025-02-24 2:00:00,2025-02-24 5:06:12,Grocery,Tata Digital,50,0,0,0,0,Himira,9946500861
+surya,200-466-909,Cancelled,2025-02-24 2:00:00,2025-02-24 5:06:12,Grocery,Tata Digital,100,50,50,0,0,Himira,9946503567

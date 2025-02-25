@@ -9,6 +9,7 @@ import {
   getDailyLeaderboardData,
   getMonthlyLeaderboardData,
   getWeeklyLeaderboardData,
+  leaderboardTrigger,
 } from "../../services/points.servce"
 // import { logger } from "../../shared/logger"
 
@@ -23,7 +24,7 @@ const orderController = {
 
       const filePath = req.file.path
       await parseAndStoreCsv(filePath, req.user?.userId)
-
+      leaderboardTrigger()
       return res.status(200).json({ success: true, message: "CSV processed successfully" })
     } catch (error) {
       console.log(error)
@@ -45,7 +46,7 @@ const orderController = {
 
   aggregatePointsSummary: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      console.log("_req", _req)
+      console.log("_req", _req.body)
       const orders = await aggregatePointsSummary()
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {

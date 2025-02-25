@@ -8,7 +8,7 @@ import locals from "./shared/locals.json"
 import userRouter from "./routes/user.route"
 import orderRouter from "./routes/order.routes"
 import { aggregatePointsCron } from "./services/cron.service"
-import { leaderboardTrigger } from "./services/points.servce"
+// import { leaderboardTrigger } from "./services/points.servce"
 
 const createServer = (): express.Application => {
   const app: Application = express()
@@ -55,7 +55,7 @@ const createServer = (): express.Application => {
   //   .then(() => console.log("Connected to PostgreSQL"))
   //   .catch((err: any) => console.error("Connection error", err))
 
-  leaderboardTrigger()
+  
 
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

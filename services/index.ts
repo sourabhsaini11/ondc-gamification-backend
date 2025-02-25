@@ -1,7 +1,7 @@
 import fs from "fs"
 import csvParser from "csv-parser"
 import { PrismaClient } from "@prisma/client"
-import moment from "moment"
+import moment from "moment-timezone"
 // import dayjs from "dayjs"
 
 const prisma = new PrismaClient()
@@ -120,7 +120,12 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
           )
 
           const orderId = normalizedRow["order_id"]
-          const timestampCreated = new Date(String(normalizedRow["timestamp_created"]))
+          const timestampStr: any = normalizedRow["timestamp_created"] // Example: "2025-02-24 2:00:00"
+          const timestampCreated: Date = moment
+            .tz(timestampStr, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata")
+            .add(5, "hours")
+            .add(30, "minutes")
+            .toDate()
 
           if (isNaN(timestampCreated.getTime())) {
             console.log(`Invalid timestamp for order ${orderId}`)
@@ -144,7 +149,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             seller_id: normalizedRow["seller_id"],
             uploaded_by: userId,
           })
-
+          // records.filter((order)=>ordersExist.includes(order.))
           console.log("records", records)
         } catch (err) {
           console.error("❌ Error processing row:", err)
@@ -388,6 +393,7 @@ const processNewOrders = async (orders: any) => {
       try {
         const uid = String(row.uid || "").trim()
         const timestampCreated: any = parseTimestamp(row.timestamp_created)
+        console.log("tiemstampCreated", timestampCreated)
         // if (!timestampCreated.isValid()) {
         //   console.log(`Invalid timestamp for order ${row.order_id}`)
         //   continue
@@ -429,6 +435,7 @@ const processNewOrders = async (orders: any) => {
           (parseFloat(row.convenience_fee) || 0)
 
         const points = await calculatePoints(gmv, uid, streakCount)
+        // console.log("potins", game_id, points)
 
         // Handle streak logic
         // console.log("streakMaintain", lastStreakDate, timestampCreated, streakCount)
@@ -607,6 +614,7 @@ const updateHighestGmvAndOrdersForDay = async () => {
       FROM aggregated_orders 
       ORDER BY total_orders DESC
     `
+    console.log("highestOrdersResults", highestOrdersResults)
 
     // Update highest_orders_for_day for the top order count game_id per day
     for (const { game_id, order_date } of highestOrdersResults as any[]) {
@@ -641,6 +649,7 @@ const calculatePoints = async (gmv: number, uid: string, streakCount: number) =>
 
   try {
     const orderCount = await getTodayOrderCount(uid)
+    console.log("==========>", orderCount)
     points += orderCount * 5
   } catch (error) {
     console.error(`Error calculating order count points for ${uid}:`, error)
@@ -661,6 +670,7 @@ const calculatePoints = async (gmv: number, uid: string, streakCount: number) =>
     }
   }
 
+  console.log("points", points)
   return points
 }
 
@@ -721,8 +731,30 @@ const bulkInsertDataIntoDb = async (data: any) => {
   if (!data || data.length === 0) return
   console.log("row", JSON.stringify(data[0].uploaded_by))
 
+  const orderRecords = await prisma.orderData.findMany({
+    select: { order_id: true, order_status: true },
+  });
+  
+  // Create a Map where the key is order_id and the value is a Set of order_status
+  const existingOrdersMap = new Map<string, Set<string>>();
+  
+  orderRecords.forEach(({ order_id, order_status }) => {
+    if (!existingOrdersMap.has(order_id)) {
+      existingOrdersMap.set(order_id, new Set());
+    }
+
+    existingOrdersMap.get(order_id)?.add(order_status);
+  });
+  
+  // Filter new orders where either order_id is new OR order_status is new for an existing order_id
+  const newOrders = data.filter(
+    (row: any) =>
+      !existingOrdersMap.has(row.order_id) || // New order_id
+      !existingOrdersMap.get(row.order_id)?.has(row.order_status) // New status for existing order_id
+  );
+
   try {
-    const formattedData = data.map((row: any) => ({
+    const formattedData = newOrders.map((row: any) => ({
       name: row.name,
       order_id: row.order_id,
       order_status: row.order_status,
@@ -746,7 +778,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
       updated_by_lambda: row.updated_by_lambda,
       gmv: row.gmv,
       streak_count: row.streak_count,
-      uploaded_by: row.uploaded_by,
+      uploaded_by: row.uploaded_by || Number(1),
       last_streak_date: row.last_streak_date,
     }))
 

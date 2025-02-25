@@ -42,6 +42,7 @@ model OrderData {
   gmv                    Int      @default(0)
   uploaded_by            Int
   @@map("orderData")
+  @@index([order_id])
 }
 
 model Leaderboard {

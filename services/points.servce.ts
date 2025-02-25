@@ -48,14 +48,14 @@ export const aggregatePointsSummary = async () => {
 
 export const createOrRefreshLeaderboardView = async () => {
   try {
-    const todayDate = new Date().toISOString().split("T")[0]
+    const todayDate = new Date().toISOString().split("T")[0] // YYYY-MM-DD
 
     const orderCheck = await prisma.$queryRaw`
-    SELECT COUNT(*) AS order_count 
-    FROM "orderData" 
-    WHERE timestamp_created >= '2025-02-05'::DATE 
-AND timestamp_created < ('2025-02-05'::DATE + INTERVAL '1 day');
-  `
+  SELECT COUNT(*) AS order_count
+  FROM "orderData"
+  WHERE timestamp_created >= ${todayDate}::DATE
+  AND timestamp_created < (${todayDate}::DATE + INTERVAL '1 day');
+`;
 
     console.log("Orders found for", todayDate, ":", orderCheck)
 
@@ -73,8 +73,8 @@ AND timestamp_created < ('2025-02-05'::DATE + INTERVAL '1 day');
                 SUM(gmv) AS total_order_gmv,
                 COUNT(CASE WHEN order_status NOT IN ('cancelled', 'partially_cancelled') THEN 1 END) AS valid_orders
             FROM public."orderData"
-            WHERE timestamp_created >= '2025-02-05'::DATE
-            AND timestamp_created < ('2025-02-05'::DATE + INTERVAL '1 day')
+            WHERE timestamp_created >= '${todayDate}'::DATE
+            AND timestamp_created < ('${todayDate}'::DATE + INTERVAL '1 day')
             GROUP BY game_id, order_id
         )
         SELECT 
