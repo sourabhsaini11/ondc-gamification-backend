@@ -6,3 +6,23 @@ services:
     ports:
       - 1147:8000
     restart: always
+    env_file: 
+      - .env
+    depends_on:
+      - db
+    command: >
+      sh -c "while ! nc -z db 5432; do sleep 1; done;
+             npx prisma migrate dev --name init;
+             node dist/index.js"
+
+  db:
+    image: postgres:alpine
+    container_name: gamafication-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: gamafication
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./data/db:/var/lib/postgresql/data

@@ -11,7 +11,7 @@ const csvController = {
       }
 
       const filePath = req.file.path
-      await parseAndStoreCsv(filePath)
+      await parseAndStoreCsv(filePath, 1)
 
       return res.status(200).json({ success: true, message: "CSV processed successfully" })
     } catch (error) {
