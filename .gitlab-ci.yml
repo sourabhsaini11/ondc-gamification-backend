@@ -1,4 +1,33 @@
-include:
-  - https://gitlab.thewitslab.com/api/v4/projects/391/repository/files/node.yml/raw?ref=main&private_token=$Boilerplate_Pipeline&.yaml
+#include:
+ # - https://gitlab.thewitslab.com/api/v4/projects/391/repository/files/node.yml/raw?ref=main&private_token=$Boilerplate_Pipeline&.yaml
+stages:
+  - dev
+
+deploy-dev:      
+  stage: dev
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "feat/dockerise-backend"'
+      when: manual
+    - when: never
+  environment: dev
+  tags:
+    - gcp
+  script:
+    - echo "Starting Dev Deployment on Compute Engine."
+    - |
+      sshpass -p $CRA_ORCHESTRATOR_PASSWORD_DEV ssh -tt $Default_Username@$CRA_ORCHESTRATOR_HOST_DEV "
+        if [[ -d orchestrator-canvas ]]; then
+          cd orchestrator-canvas
+          docker-compose down
+          cd && rm -rf orchestrator-canvas
+        fi "
+    - Path=$(pwd)
+    - bash -c '(cd /home/ubuntu/script && ./env_script.sh vault-name '$VAULT_TOKEN' > /dev/null)'
+    - mv /home/ubuntu/script/.env $Path && cd $Path
+    - sshpass -p $CRA_ORCHESTRATOR_PASSWORD_DEV ssh -tt $Default_Username@$CRA_ORCHESTRATOR_HOST_DEV "git clone -b feat/dockerise-backend https://user:$GITLAB_ACCESS_TOKEN@gitlab.thewitslab.com/wil-workspace/protean-cra-v2/orchestrator-service/orchestrator-canvas.git"
+    - sshpass -p $CRA_ORCHESTRATOR_PASSWORD_DEV scp .env $Default_Username@$CRA_ORCHESTRATOR_HOST_DEV:/home/$Default_Username/orchestrator-canvas
+    - sshpass -p $CRA_ORCHESTRATOR_PASSWORD_DEV ssh -tt $Default_Username@$CRA_ORCHESTRATOR_HOST_DEV "cd orchestrator-canvas && docker-compose up -d --build"
+    - echo "Hosted_URL":"https://orchestrator-canvas-dev.risewithprotean.io"
+    - echo "Deployment Completed for orchestrator-canvas, Environment- Dev."
 
 
