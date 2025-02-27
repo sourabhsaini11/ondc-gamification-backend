@@ -16,7 +16,7 @@ services:
              node dist/index.js"
 
   db:
-    image: postgres:alpine
+    image: postgres:latest
     container_name: gamafication-db
     environment:
       POSTGRES_USER: postgres
@@ -24,5 +24,5 @@ services:
       POSTGRES_DB: gamafication
     ports:
       - "5434:5432"
-    volumes:
-      - ./data/db:/var/lib/postgresql/data
+    # volumes:
+    #   - ./data/db:/var/lib/postgresql/data
