@@ -12,6 +12,10 @@ services:
       - db
     command: >
       sh -c "while ! nc -z db 5432; do sleep 1; done;
+             echo 'Waiting for DATABASE_URL...';
+             while [ -z \"$DATABASE_URL\" ]; do sleep 1; done;
+             echo 'DATABASE_URL found!';
+             npx prisma generate;
              npx prisma migrate dev --name init;
              node dist/index.js"
 
@@ -22,6 +26,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 1234
       POSTGRES_DB: gamafication
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gamafication
     ports:
       - "5434:5432"
     volumes:
