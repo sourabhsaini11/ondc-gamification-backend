@@ -6,6 +6,11 @@ import moment from "moment-timezone"
 
 const prisma = new PrismaClient()
 
+type OrderRecord = {
+  order_id: string
+  order_status: string
+}
+
 // interface CsvRow {
 //   uid: string
 //   name: string
@@ -731,27 +736,27 @@ const bulkInsertDataIntoDb = async (data: any) => {
   if (!data || data.length === 0) return
   console.log("row", JSON.stringify(data[0].uploaded_by))
 
-  const orderRecords = await prisma.orderData.findMany({
+  const orderRecords: OrderRecord[] = await prisma.orderData.findMany({
     select: { order_id: true, order_status: true },
-  });
-  
+  })
+
   // Create a Map where the key is order_id and the value is a Set of order_status
-  const existingOrdersMap = new Map<string, Set<string>>();
-  
-  orderRecords.forEach(({ order_id, order_status }) => {
+  const existingOrdersMap = new Map<string, Set<string>>()
+
+  orderRecords.forEach(({ order_id, order_status }: OrderRecord) => {
     if (!existingOrdersMap.has(order_id)) {
-      existingOrdersMap.set(order_id, new Set());
+      existingOrdersMap.set(order_id, new Set())
     }
 
-    existingOrdersMap.get(order_id)?.add(order_status);
-  });
-  
+    existingOrdersMap.get(order_id)?.add(order_status)
+  })
+
   // Filter new orders where either order_id is new OR order_status is new for an existing order_id
   const newOrders = data.filter(
     (row: any) =>
       !existingOrdersMap.has(row.order_id) || // New order_id
-      !existingOrdersMap.get(row.order_id)?.has(row.order_status) // New status for existing order_id
-  );
+      !existingOrdersMap.get(row.order_id)?.has(row.order_status), // New status for existing order_id
+  )
 
   try {
     const formattedData = newOrders.map((row: any) => ({
