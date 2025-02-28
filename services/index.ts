@@ -6,10 +6,10 @@ import moment from "moment-timezone"
 
 const prisma = new PrismaClient()
 
-type OrderRecord = {
-  order_id: string
-  order_status: string
-}
+// type OrderRecord = {
+//   order_id: string
+//   order_status: string
+// }
 
 // interface CsvRow {
 //   uid: string
@@ -411,7 +411,7 @@ const processNewOrders = async (orders: any) => {
           select: { game_id: true, last_streak_date: true, streak_count: true },
         })
 
-        // console.log("existingUser", existingUser)
+        console.log("existingUser", existingUser)
 
         let game_id,
           lastStreakDate,
@@ -439,7 +439,7 @@ const processNewOrders = async (orders: any) => {
           (parseFloat(row.taxes) || 0) +
           (parseFloat(row.convenience_fee) || 0)
 
-        const points = await calculatePoints(gmv, uid, streakCount)
+        const points = await calculatePoints(gmv, uid, streakCount, "newOrder")
         // console.log("potins", game_id, points)
 
         // Handle streak logic
@@ -499,18 +499,40 @@ const processCancellations = async (cancellations: any) => {
           orderBy: {
             timestamp_created: "desc",
           },
-          select: {
-            points: true,
-            gmv: true,
-            game_id: true,
-            uid: true,
-            last_streak_date: true,
-          },
         })
+        const canceledOrderCount =
+          originalOrder &&
+          (await prisma.orderData.count({
+            where: {
+              uid: originalOrder.uid, // Assuming `userId` is a field in `orderData` that references the `User` table
+              order_status: {
+                in: ["cancelled", "partially_cancelled"], // Only count orders that are canceled or partially canceled
+              },
+            },
+          }))
+        console.log("canceledOrderCount", canceledOrderCount)
+        if (canceledOrderCount && canceledOrderCount >= 3) {
+          console.log(`${originalOrder?.game_id} is blacklisted `)
+        }
+
+        const totalPoints =
+          originalOrder &&
+          (await prisma.orderData.groupBy({
+            by: ["uid"], // Group by user ID
+            _sum: {
+              points: true, // Sum the points for each user
+            },
+            where: {
+              uid: originalOrder.uid, // Filter for the specific user
+              order_status: "created", // Only consider orders with status 'created'
+            },
+          }))
+        const tPoint = totalPoints ? -totalPoints : 0
+        console.log(`Total points for user ${originalOrder?.uid}:`, totalPoints)
 
         if (!originalOrder) {
           console.log(`Original order not found for cancellation: ${orderId}`)
-          continue
+          return
         }
 
         const { points: originalPoints, game_id: gameId, uid, last_streak_date } = originalOrder
@@ -535,12 +557,24 @@ const processCancellations = async (cancellations: any) => {
         if (orderStatus === "cancelled") {
           newGmv = 0 // Full cancellation resets GMV
           pointsAdjustment = -originalPoints
+          if (canceledOrderCount == 0) {
+            console.log("------->")
+            pointsAdjustment = -(originalPoints + 200)
+          } else if (canceledOrderCount == 1) {
+            pointsAdjustment = -tPoint
+          }
         } else {
           // Partially cancelled, recalculate points with streak as 0
-          const newPoints = await calculatePoints(newGmv, uid, 0)
+          const newPoints = await calculatePoints(newGmv, uid, 0, "partial")
           pointsAdjustment = newPoints - originalPoints
         }
 
+        streakCancellation(
+          originalOrder.last_streak_date,
+          originalOrder.timestamp_created,
+          originalOrder.streak_count,
+          originalOrder.uid,
+        )
         processedData.push({
           ...row,
           game_id: gameId,
@@ -577,7 +611,7 @@ const processCancellations = async (cancellations: any) => {
 
 export const updateHighestGmvAndOrdersForDay = async () => {
   try {
-    // Reset highest_gmv_for_day and highest_orders_for_day for all records
+    // Step 1: Reset highest_gmv_for_day and highest_orders_for_day for all records
     await prisma.orderData.updateMany({
       data: {
         highest_gmv_for_day: false,
@@ -594,7 +628,7 @@ export const updateHighestGmvAndOrdersForDay = async () => {
     //   },
     // })
 
-    const highestGmvResults = await prisma.$queryRaw`
+    const highestGmvResults: any = await prisma.$queryRaw`
       WITH aggregated_orders AS (
         SELECT 
           game_id, 
@@ -669,7 +703,7 @@ export const updateHighestGmvAndOrdersForDay = async () => {
       }
     }
 
-    // Find the game_id with the highest number of orders for each day
+    // Step 4: Create a view for highest orders and GMV on the same day
     const highestOrdersResults = await prisma.$queryRaw`
       -- WITH aggregated_orders AS (
       --   SELECT game_id, DATE(timestamp_created) as order_date, COUNT(order_id) AS total_orders 
@@ -697,8 +731,50 @@ export const updateHighestGmvAndOrdersForDay = async () => {
     `
     console.log("highestOrdersResults", highestOrdersResults)
 
-    // Update highest_orders_for_day for the top order count game_id per day
-    for (const { game_id, order_date } of highestOrdersResults as any[]) {
+    // Step 5: Update highest_orders_for_day for the top order count game_id per day
+    for (const { game_id, order_date, total_orders, total_gmv, max_orders, max_gmv } of highestOrdersResults as any[]) {
+      // If this player has the highest GMV for the day as well, award extra points
+      const isHighestGMVUser = highestGmvResults.some(
+        (result: any) => result.game_id === game_id && result.timestamp_created === order_date,
+      )
+
+      // Deduct points from the old highest GMV and orders player if they were replaced
+      if (isHighestGMVUser) {
+        await prisma.leaderboard.update({
+          where: { game_id },
+          data: {
+            total_points: {
+              decrement: 100,
+            },
+          },
+        })
+      }
+
+      // Award 100 points for the highest GMV and 100 for the highest order count
+      if (total_orders === max_orders) {
+        await prisma.leaderboard.update({
+          where: { game_id },
+          data: {
+            total_points: {
+              increment: 100,
+            },
+          },
+        })
+      }
+
+      // Now award 100 points to the top GMV holder for this day
+      if (total_gmv === max_gmv) {
+        await prisma.leaderboard.update({
+          where: { game_id },
+          data: {
+            total_points: {
+              increment: 100,
+            },
+          },
+        })
+      }
+
+      // Step 6: Add the player to the leaderboard if both GMV and orders are highest
       await prisma.orderData.updateMany({
         where: {
           game_id,
@@ -717,12 +793,15 @@ export const updateHighestGmvAndOrdersForDay = async () => {
   }
 }
 
-const calculatePoints = async (gmv: number, uid: string, streakCount: number) => {
+const calculatePoints = async (gmv: number, uid: string, streakCount: number, condition: string) => {
   gmv = Math.max(0, parseFloat(gmv.toString()))
 
   let points = 10
 
   points += Math.floor(gmv / 10)
+  if (condition === "partial") {
+    return points
+  }
 
   if (gmv > 1000) {
     points += 50
@@ -774,6 +853,48 @@ const getTodayOrderCount = async (uid: string) => {
   }
 }
 
+const streakCancellation = async (lastStreakDate: any, currentTimestamp: any, streakCount: any, uid: string) => {
+  /**
+   * Process streak logic and return updated values.
+   */
+  try {
+    let streakMaintain = true
+    let newStreakCount = streakCount || 1
+    let newLastStreakDate = lastStreakDate || currentTimestamp
+    const todayCount = await getTodayOrderCount(uid)
+
+    if (lastStreakDate) {
+      const lastStreakDay = moment(lastStreakDate).startOf("day")
+      const currentDay = moment(currentTimestamp).startOf("day")
+      const dayDifference = currentDay.diff(lastStreakDay, "days")
+
+      if (dayDifference === 1) {
+        newStreakCount += 1
+        newLastStreakDate = currentTimestamp
+      } else if (dayDifference > 1) {
+        newStreakCount = 1 // Streak reset
+        streakMaintain = false
+        newLastStreakDate = currentTimestamp
+      }
+    }
+
+    if (todayCount === 0) {
+      newStreakCount = 0
+      streakMaintain = false
+      return { streakMaintain, newStreakCount, newLastStreakDate }
+    }
+
+    return { streakMaintain, newStreakCount, newLastStreakDate }
+  } catch (err) {
+    console.error("Error processing streak", err)
+    return {
+      streakMaintain: false,
+      newStreakCount: 1,
+      newLastStreakDate: currentTimestamp,
+    }
+  }
+}
+
 const processStreak = (lastStreakDate: any, currentTimestamp: any, streakCount: any) => {
   /**
    * Process streak logic and return updated values.
@@ -782,6 +903,13 @@ const processStreak = (lastStreakDate: any, currentTimestamp: any, streakCount: 
     let streakMaintain = true
     let newStreakCount = streakCount || 1
     let newLastStreakDate = lastStreakDate || currentTimestamp
+
+    // const todayCount = await getTodayOrderCount(uid)
+    // if (todayCount === 0) {
+    //   newStreakCount = 0
+    //   streakMaintain = false
+    //   return { streakMaintain, newStreakCount, newLastStreakDate }
+    // }
 
     if (lastStreakDate) {
       const lastStreakDay = moment(lastStreakDate).startOf("day")
@@ -801,7 +929,11 @@ const processStreak = (lastStreakDate: any, currentTimestamp: any, streakCount: 
     return { streakMaintain, newStreakCount, newLastStreakDate }
   } catch (err) {
     console.error("Error processing streak", err)
-    return { streakMaintain: false, newStreakCount: 1, newLastStreakDate: currentTimestamp }
+    return {
+      streakMaintain: false,
+      newStreakCount: 1,
+      newLastStreakDate: currentTimestamp,
+    }
   }
 }
 
@@ -812,14 +944,16 @@ const bulkInsertDataIntoDb = async (data: any) => {
   if (!data || data.length === 0) return
   console.log("row", JSON.stringify(data[0].uploaded_by))
 
-  const orderRecords: OrderRecord[] = await prisma.orderData.findMany({
+  type OrderId = string | number
+  type OrderStatus = string
+
+  const orderRecords: { order_id: OrderId; order_status: OrderStatus }[] = await prisma.orderData.findMany({
     select: { order_id: true, order_status: true },
   })
 
-  // Create a Map where the key is order_id and the value is a Set of order_status
-  const existingOrdersMap = new Map<string, Set<string>>()
+  const existingOrdersMap = new Map<OrderId, Set<OrderStatus>>()
 
-  orderRecords.forEach(({ order_id, order_status }: OrderRecord) => {
+  orderRecords.forEach(({ order_id, order_status }) => {
     if (!existingOrdersMap.has(order_id)) {
       existingOrdersMap.set(order_id, new Set())
     }
@@ -827,8 +961,31 @@ const bulkInsertDataIntoDb = async (data: any) => {
     existingOrdersMap.get(order_id)?.add(order_status)
   })
 
+  const usersWithExcessiveCancellations = await prisma.orderData.groupBy({
+    by: ["game_id"], // Group by user ID & game_id
+    _count: { order_status: true }, // Count number of orders per user per game
+    where: {
+      order_status: {
+        in: ["cancelled"],
+      },
+    },
+    having: {
+      order_status: {
+        _count: {
+          gte: 3, // Users with 3 or more cancellations
+        },
+      },
+    },
+  })
+
+  // Step 2: Create a Set of {uid, game_id} combinations to filter data
+  const blacklistedUsers = new Set(usersWithExcessiveCancellations.map(({ game_id }) => game_id))
+
+  // Step 3: Filter out users from `data` who match the blacklist
+  const filteredData = data.filter((item: any) => !blacklistedUsers.has(item.game_id))
+
   // Filter new orders where either order_id is new OR order_status is new for an existing order_id
-  const newOrders = data.filter(
+  const newOrders = filteredData.filter(
     (row: any) =>
       !existingOrdersMap.has(row.order_id) || // New order_id
       !existingOrdersMap.get(row.order_id)?.has(row.order_status), // New status for existing order_id

@@ -55,8 +55,6 @@ const createServer = (): express.Application => {
   //   .then(() => console.log("Connected to PostgreSQL"))
   //   .catch((err: any) => console.error("Connection error", err))
 
-  
-
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     err = sanitize(err)

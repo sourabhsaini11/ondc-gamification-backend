@@ -21,7 +21,7 @@ deploy-dev:
         if [[ -d gamafication-node-backend ]]; then
           cd gamafication-node-backend
           docker-compose down
-          cd && rm -rf gamafication-node-backend
+          cd && sudo rm -rf gamafication-node-backend
         fi "
     - Path=$(pwd)
     - bash -c '(cd /home/ubuntu/script && ./env_script.sh vault-name '$VAULT_TOKEN' > /dev/null)'
