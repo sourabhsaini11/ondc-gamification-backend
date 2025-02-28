@@ -575,7 +575,7 @@ const processCancellations = async (cancellations: any) => {
   }
 }
 
-const updateHighestGmvAndOrdersForDay = async () => {
+export const updateHighestGmvAndOrdersForDay = async () => {
   try {
     // Reset highest_gmv_for_day and highest_orders_for_day for all records
     await prisma.orderData.updateMany({
@@ -586,38 +586,114 @@ const updateHighestGmvAndOrdersForDay = async () => {
     })
 
     // Find the game_id with the highest GMV for each day
-    const highestGmvResults = await prisma.orderData.groupBy({
-      by: ["game_id", "timestamp_created"],
-      _sum: { points: true },
-      orderBy: {
-        _sum: { points: "desc" }, // Order by highest GMV
-      },
-    })
+    // const highestGmvResults = await prisma.orderData.groupBy({
+    //   by: ["game_id", "timestamp_created"],
+    //   _sum: { points: true },
+    //   orderBy: {
+    //     _sum: { points: "desc" }, // Order by highest GMV
+    //   },
+    // })
+
+    const highestGmvResults = await prisma.$queryRaw`
+      WITH aggregated_orders AS (
+        SELECT 
+          game_id, 
+          DATE(timestamp_created) AS order_date, 
+          SUM(points) AS total_points
+        FROM "orderData"
+        GROUP BY game_id, order_date
+      ),
+      ranked_orders AS (
+        SELECT 
+          game_id, 
+          order_date, 
+          total_points,
+          RANK() OVER (PARTITION BY order_date ORDER BY total_points DESC) AS rank
+        FROM aggregated_orders
+      )
+      SELECT game_id, order_date, total_points
+      FROM ranked_orders
+      WHERE rank = 1 AND total_points > 0  -- Exclude zero-point records
+      ORDER BY order_date DESC;
+    `
+
+    console.log("highestGmvResults", highestGmvResults)
 
     // Update highest_gmv_for_day for the top GMV game_id per day
-    for (const { game_id, timestamp_created } of highestGmvResults as any[]) {
-      await prisma.orderData.updateMany({
-        where: {
-          game_id,
-          timestamp_created: {
-            gte: new Date(timestamp_created),
-            lt: new Date(new Date(timestamp_created).setDate(new Date(timestamp_created).getDate() + 1)),
+    for (const { game_id, order_date } of highestGmvResults as any[]) {
+      if (!order_date) {
+        console.error("order_date is undefined for game_id:", game_id)
+        continue // Skip invalid data
+      }
+
+      try {
+        // Convert order_date to a valid Date object
+        const istDate = new Date(order_date)
+
+        if (isNaN(istDate.getTime())) {
+          console.error("Invalid Date detected:", order_date)
+          continue // Skip this iteration if date is invalid
+        }
+
+        // IST Offset in milliseconds
+        const istOffset = 5.5 * 60 * 60 * 1000
+
+        // Convert to IST start of day
+        const startOfDayIST = new Date(istDate)
+        startOfDayIST.setUTCHours(0, 0, 0, 0)
+
+        // Convert to IST end of day
+        const endOfDayIST = new Date(istDate)
+        endOfDayIST.setUTCHours(23, 59, 59, 999)
+
+        // Convert back to UTC for Prisma
+        const startOfDayUTC = new Date(startOfDayIST.getTime() - istOffset)
+        const endOfDayUTC = new Date(endOfDayIST.getTime() - istOffset)
+
+        console.log(`Updating highest_gmv_for_day for game_id: ${game_id} from ${startOfDayUTC} to ${endOfDayUTC}`)
+
+        await prisma.orderData.updateMany({
+          where: {
+            game_id,
+            timestamp_created: {
+              gte: startOfDayUTC, // Start of IST day in UTC
+              lt: endOfDayUTC, // End of IST day in UTC
+            },
           },
-        },
-        data: { highest_gmv_for_day: true },
-      })
+          data: {
+            highest_gmv_for_day: true,
+          },
+        })
+      } catch (error) {
+        console.error("Error processing order_date:", order_date, error)
+      }
     }
 
     // Find the game_id with the highest number of orders for each day
     const highestOrdersResults = await prisma.$queryRaw`
-      WITH aggregated_orders AS (
-        SELECT game_id, DATE(timestamp_created) as order_date, COUNT(order_id) AS total_orders 
-        FROM "orderData" 
-        GROUP BY game_id, order_date
+      -- WITH aggregated_orders AS (
+      --   SELECT game_id, DATE(timestamp_created) as order_date, COUNT(order_id) AS total_orders 
+      --   FROM "orderData" 
+      --   GROUP BY game_id, order_date
+      -- )
+      -- SELECT game_id, order_date 
+      -- FROM aggregated_orders 
+      -- ORDER BY total_orders DESC
+      WITH filtered_orders AS (
+      SELECT order_id
+      FROM "orderData"
+      GROUP BY order_id
+      HAVING COUNT(*) = 1 OR COUNT(DISTINCT order_status) = 1
+      ),
+      aggregated_orders AS (
+          SELECT game_id, DATE(timestamp_created) AS order_date, COUNT(order_id) AS total_orders
+          FROM "orderData"
+          WHERE order_id IN (SELECT order_id FROM filtered_orders)
+          GROUP BY game_id, order_date
       )
-      SELECT game_id, order_date 
-      FROM aggregated_orders 
-      ORDER BY total_orders DESC
+      SELECT game_id, order_date, total_orders
+      FROM aggregated_orders
+      ORDER BY total_orders DESC;
     `
     console.log("highestOrdersResults", highestOrdersResults)
 
