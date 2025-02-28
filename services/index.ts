@@ -6,6 +6,11 @@ import moment from "moment-timezone"
 
 const prisma = new PrismaClient()
 
+type OrderRecord = {
+  order_id: string
+  order_status: string
+}
+
 // interface CsvRow {
 //   uid: string
 //   name: string
