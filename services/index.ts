@@ -111,7 +111,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
     uploaded_by: number
   }[] = []
   // const uidFirstOrderTimestamp = new Map()
-
+  const recordMap = new Map<string, string>()
   return new Promise((resolve, reject) => {
     fs.createReadStream(filePath)
       .pipe(csvParser())
@@ -123,6 +123,29 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
               return [normalizedKey, value]
             }),
           )
+
+          const requiredFields = [
+            "phone_number",
+            "name",
+            "order_id",
+            "order_status",
+            "timestamp_created",
+            "timestamp_updated",
+            "category",
+            "buyer_app_id",
+            "base_price",
+            "shipping_charges",
+            "taxes",
+            "discount",
+            "conveniance_fee",
+            "seller_id",
+          ]
+
+          const missingFields = requiredFields.filter((field) => !normalizedRow[field])
+
+          if (missingFields.length > 0) {
+            console.warn(`Missing fields in row: ${missingFields.join(", ")}`)
+          }
 
           const orderId = normalizedRow["order_id"]
           const timestampStr: any = normalizedRow["timestamp_created"] // Example: "2025-02-24 2:00:00"
@@ -137,23 +160,33 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             return
           }
 
-          records.push({
-            uid: String(normalizedRow["phone_number"])?.trim(),
-            name: normalizedRow["name"],
-            order_id: orderId,
-            order_status: String(normalizedRow["order_status"])?.toLowerCase(),
-            timestamp_created: timestampCreated,
-            timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])),
-            category: normalizedRow["category"],
-            buyer_app_id: normalizedRow["buyer_app_id"],
-            base_price: parseFloat(String(normalizedRow["base_price"])) || 0,
-            shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
-            taxes: parseFloat(String(normalizedRow["taxes"])) || 0,
-            discount: parseFloat(String(normalizedRow["discount"])) || 0,
-            convenience_fee: parseFloat(String(normalizedRow["conveniance_fee"])) || 0,
-            seller_id: normalizedRow["seller_id"],
-            uploaded_by: userId,
-          })
+          
+
+          if (!recordMap.has(orderId as string) || recordMap.get(orderId as string) !== normalizedRow["order_status"]) {
+            records.push({
+              uid: String(normalizedRow["phone_number"])?.trim(),
+              name: normalizedRow["name"],
+              order_id: orderId,
+              order_status: String(normalizedRow["order_status"])?.toLowerCase(),
+              timestamp_created: timestampCreated,
+              timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])),
+              category: normalizedRow["category"],
+              buyer_app_id: normalizedRow["buyer_app_id"],
+              base_price: parseFloat(String(normalizedRow["base_price"])) || 0,
+              shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
+              taxes: parseFloat(String(normalizedRow["taxes"])) || 0,
+              discount: parseFloat(String(normalizedRow["discount"])) || 0,
+              convenience_fee: parseFloat(String(normalizedRow["conveniance_fee"])) || 0,
+              seller_id: normalizedRow["seller_id"],
+              uploaded_by: userId,
+            })
+
+            // Store order_id with its order_status in Map
+            recordMap.set(orderId as string, normalizedRow["order_status"] as string)
+          } else {
+            console.warn(`Duplicate order_id ${orderId} with status ${normalizedRow["order_status"]} skipped.`)
+          }
+
           // records.filter((order)=>ordersExist.includes(order.))
           console.log("records", records)
         } catch (err) {
