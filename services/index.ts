@@ -15,7 +15,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
     order_status: any
     timestamp_created: Date
     timestamp_updated: Date
-    category: any
+    domain: any
     buyer_app_id: any
     base_price: number
     shipping_charges: number
@@ -27,17 +27,32 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
   }[] = []
   // const uidFirstOrderTimestamp = new Map()
   const recordMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
+  let rowCount = 0
   return new Promise((resolve, reject) => {
     fs.createReadStream(filePath)
       .pipe(csvParser())
       .on("data", (row) => {
         try {
+          rowCount++
+          if (rowCount > 100000) {
+            return reject(new Error("Record length exceeded above 100000"))
+          }
+
+          let check = false
           const normalizedRow = Object.fromEntries(
             Object.entries(row).map(([key, value]) => {
               const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, "_")
+              if (value == "" || value == undefined || value === null) {
+                check = true
+              }
+
               return [normalizedKey, value]
             }),
           )
+          if (check) {
+            console.error("Values cant be empty")
+            return reject(new Error("Value cant be empty or invlaid"))
+          }
 
           const requiredFields = [
             "phone_number",
@@ -53,13 +68,13 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             "taxes",
             "discount",
             "conveniance_fee",
-            "seller_id",
           ]
 
           const missingFields = requiredFields.filter((field) => !normalizedRow[field])
 
           if (missingFields.length > 0) {
-            return reject(`Fields are missing ${missingFields}`)
+            console.error(`❌ Missing Fields: ${missingFields.join(", ")}`)
+            return reject(new Error(`Fields are missing: ${missingFields.join(", ")}`))
           }
 
           const orderId = normalizedRow["order_id"]
@@ -86,8 +101,8 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
               order_id: orderId,
               order_status: String(normalizedRow["order_status"])?.toLowerCase(),
               timestamp_created: timestampCreated,
-              timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])),
-              category: normalizedRow["domain"],
+              timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])) || timestampCreated, // timestamp_Updated update 
+              domain: normalizedRow["domain"],
               buyer_app_id: normalizedRow["buyer_app_id"],
               base_price: parseFloat(String(normalizedRow["base_price"])) || 0,
               shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
@@ -105,6 +120,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             })
           } else {
             console.warn(`Duplicate order_id ${orderId} with status ${normalizedRow["order_status"]} skipped.`)
+            return reject(new Error("Duplicate Order Id Exist"))
           }
 
           // records.filter((order)=>ordersExist.includes(order.))
@@ -120,9 +136,6 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             return resolve()
           }
 
-          if (records.length > 100000) {
-            return reject("Records Length Exceeded above 10000")
-          }
 
           // console.log("records", records)
 
@@ -374,7 +387,7 @@ const processNewOrders = async (orders: any) => {
         let game_id,
           lastStreakDate,
           streakCount = 1
-
+        let phone_number
         if (existingUser) {
           game_id = existingUser.game_id
           lastStreakDate = existingUser.last_streak_date || timestampCreated
@@ -386,13 +399,14 @@ const processNewOrders = async (orders: any) => {
           }
 
           const firstName = row.name ? row.name.split(" ")[0] : "User"
-          let lastUidDigits = uid.length >= 4 ? uid.slice(-4) : uid
-
+          const lastUidDigits = uid.length >= 4 ? uid.slice(-4) : uid
           // Hash the lastUidDigits using BLAKE2b-512
           const hash = blake2b(lastUidDigits, undefined, 64) // 64-byte (512-bit) hash
-          lastUidDigits = Buffer.from(hash).toString("hex").substring(0, 4)
+         const hashedlastUidDigits = Buffer.from(hash).toString("hex")
           lastStreakDate = timestampCreated
-          game_id = `${firstName}${uidFirstOrderTimestamp[uid]}${lastUidDigits}`
+          game_id = `${firstName}${uidFirstOrderTimestamp[uid]}${hashedlastUidDigits}`
+          // game_id = `${firstuiddigits}${firstName}${hashedlastUidDigits}`
+          phone_number = "XXXXXX" + lastUidDigits
         }
 
         // Calculate GMV
@@ -418,6 +432,7 @@ const processNewOrders = async (orders: any) => {
 
         processedData.push({
           ...row,
+          phone_number,
           game_id,
           points: points,
           entry_updated: true,
@@ -1015,7 +1030,6 @@ const bulkInsertDataIntoDb = async (data: any) => {
       taxes: parseFloat(row.taxes || 0),
       discount: parseFloat(row.discount || 0),
       convenience_fee: parseFloat(row.convenience_fee || 0),
-      seller_id: row.seller_id,
       uid: row.uid,
       game_id: row.game_id,
       points: parseFloat(row.points || 0),

@@ -29,7 +29,6 @@ model OrderData {
   taxes                  Float    @default(0.00)
   discount               Float    @default(0.00)
   convenience_fee        Float    @default(0.00)
-  seller_id              String   @default("")
   streak_count           Int      @default(0)
   last_streak_date       DateTime
   updated_by_lambda      DateTime
