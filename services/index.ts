@@ -786,6 +786,10 @@ const calculatePoints = async (gmv: number, uid: string, streakCount: number, co
 
   points += Math.floor(gmv / 10)
   if (condition === "partial") {
+    if (gmv > 1000) {
+      return points - 50
+    }
+
     return points
   }
 
