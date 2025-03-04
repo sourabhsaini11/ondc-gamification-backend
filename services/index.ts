@@ -145,6 +145,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
 
           if (missingFields.length > 0) {
             console.warn(`Missing fields in row: ${missingFields.join(", ")}`)
+            return
           }
 
           const orderId = normalizedRow["order_id"]
@@ -159,8 +160,6 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             console.log(`Invalid timestamp for order ${orderId}`)
             return
           }
-
-          
 
           if (!recordMap.has(orderId as string) || recordMap.get(orderId as string) !== normalizedRow["order_status"]) {
             records.push({
@@ -188,7 +187,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
           }
 
           // records.filter((order)=>ordersExist.includes(order.))
-          console.log("records", records)
+          // console.log("records", records)
         } catch (err) {
           console.error("❌ Error processing row:", err)
         }
@@ -430,8 +429,9 @@ const processNewOrders = async (orders: any) => {
     for (const row of orders) {
       try {
         const uid = String(row.uid || "").trim()
-        const timestampCreated: any = parseTimestamp(row.timestamp_created)
-        console.log("tiemstampCreated", timestampCreated)
+        // const timestampCreated: any = parseTimestamp(row.timestamp_created)
+        const timestampCreated: any = row.timestamp_created
+        console.log("tiemstampCreated", timestampCreated, new Date(timestampCreated), row.timestamp_created)
         // if (!timestampCreated.isValid()) {
         //   console.log(`Invalid timestamp for order ${row.order_id}`)
         //   continue
@@ -444,7 +444,7 @@ const processNewOrders = async (orders: any) => {
           select: { game_id: true, last_streak_date: true, streak_count: true },
         })
 
-        console.log("existingUser", existingUser)
+        console.log("existingUser-----", existingUser)
 
         let game_id,
           lastStreakDate,
@@ -456,7 +456,8 @@ const processNewOrders = async (orders: any) => {
           streakCount = existingUser.streak_count
         } else {
           if (!uidFirstOrderTimestamp[uid]) {
-            uidFirstOrderTimestamp[uid] = timestampCreated.hour()
+            // uidFirstOrderTimestamp[uid] = timestampCreated.format("HH")
+            uidFirstOrderTimestamp[uid] = String(new Date(timestampCreated).getUTCHours()).padStart(2, "0")
           }
 
           const firstName = row.name ? row.name.split(" ")[0] : "User"
@@ -472,7 +473,10 @@ const processNewOrders = async (orders: any) => {
           (parseFloat(row.taxes) || 0) +
           (parseFloat(row.convenience_fee) || 0)
 
-        const points = await calculatePoints(gmv, uid, streakCount, "newOrder")
+        console.log("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
+        const points = await calculatePoints(gmv, uid, streakCount, "newOrder", timestampCreated)
+        console.log("sec---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
+
         // console.log("potins", game_id, points)
 
         // Handle streak logic
@@ -520,7 +524,8 @@ const processCancellations = async (cancellations: any) => {
       try {
         const orderId = row.order_id
         const orderStatus = (row.order_status || "").toLowerCase()
-        const timestampCreated: any = parseTimestamp(row.timestamp_created)
+        // const timestampCreated: any = parseTimestamp(row.timestamp_created)
+        const timestampCreated: any = row.timestamp_created
 
         const originalOrder = await prisma.orderData.findFirst({
           where: {
@@ -598,9 +603,11 @@ const processCancellations = async (cancellations: any) => {
           }
         } else {
           // Partially cancelled, recalculate points with streak as 0
-          const newPoints = await calculatePoints(newGmv, uid, 0, "partial")
+          const newPoints = await calculatePoints(newGmv, uid, 0, "partial", timestampCreated)
           pointsAdjustment = newPoints - originalPoints
         }
+
+        console.log("first---", timestampCreated, timestampCreated.toISOString())
 
         streakCancellation(
           originalOrder.last_streak_date,
@@ -783,29 +790,31 @@ export const updateHighestGmvAndOrdersForDay = async () => {
         })
       }
 
-      // Award 100 points for the highest GMV and 100 for the highest order count
-      if (total_orders === max_orders) {
-        await prisma.leaderboard.update({
-          where: { game_id },
-          data: {
-            total_points: {
-              increment: 100,
-            },
-          },
-        })
-      }
+      console.log("total_orders", total_orders, total_gmv, max_orders, max_gmv)
 
-      // Now award 100 points to the top GMV holder for this day
-      if (total_gmv === max_gmv) {
-        await prisma.leaderboard.update({
-          where: { game_id },
-          data: {
-            total_points: {
-              increment: 100,
-            },
-          },
-        })
-      }
+      // // Award 100 points for the highest GMV and 100 for the highest order count
+      // if (total_orders === max_orders) {
+      //   await prisma.leaderboard.update({
+      //     where: { game_id },
+      //     data: {
+      //       total_points: {
+      //         increment: 100,
+      //       },
+      //     },
+      //   })
+      // }
+
+      // // Now award 100 points to the top GMV holder for this day
+      // if (total_gmv === max_gmv) {
+      //   await prisma.leaderboard.update({
+      //     where: { game_id },
+      //     data: {
+      //       total_points: {
+      //         increment: 100,
+      //       },
+      //     },
+      //   })
+      // }
 
       // Step 6: Add the player to the leaderboard if both GMV and orders are highest
       await prisma.orderData.updateMany({
@@ -826,7 +835,7 @@ export const updateHighestGmvAndOrdersForDay = async () => {
   }
 }
 
-const calculatePoints = async (gmv: number, uid: string, streakCount: number, condition: string) => {
+const calculatePoints = async (gmv: number, uid: string, streakCount: number, condition: string, timestamp: any) => {
   gmv = Math.max(0, parseFloat(gmv.toString()))
 
   let points = 10
@@ -841,8 +850,9 @@ const calculatePoints = async (gmv: number, uid: string, streakCount: number, co
   }
 
   try {
-    const orderCount = await getTodayOrderCount(uid)
-    console.log("==========>", orderCount)
+    console.log("==========>", timestamp)
+    const orderCount = await getTodayOrderCount2(uid, timestamp)
+    console.log("==========>", orderCount, timestamp)
     points += orderCount * 5
   } catch (error) {
     console.error(`Error calculating order count points for ${uid}:`, error)
@@ -865,6 +875,44 @@ const calculatePoints = async (gmv: number, uid: string, streakCount: number, co
 
   console.log("points", points)
   return points
+}
+
+const getTodayOrderCount2 = async (uid: string, timestamp: any) => {
+  try {
+    console.log("timestamp2", timestamp)
+    const startOfDay = new Date(timestamp)
+    startOfDay.setHours(0, 0, 0, 0)
+
+    const endOfDay = new Date(timestamp)
+    endOfDay.setHours(23, 59, 59, 999)
+    const totalOrdersToday = await prisma.orderData.count({
+      where: {
+        uid: uid,
+        timestamp_created: {
+          gte: startOfDay,
+          lt: endOfDay,
+        },
+      },
+    })
+    console.log("timestamp2", timestamp)
+
+    // const totalOrders = await prisma.orderData.findMany({
+    //   where: {
+    //     uid: uid,
+    //     timestamp_created: {
+    //       gte: new Date(timestamp.setHours(0, 0, 0, 0)),
+    //       lt: new Date(timestamp.setHours(23, 59, 59, 999)),
+    //     },
+    //   },
+    // })
+
+    // console.log("totalOrders", totalOrders)
+
+    return totalOrdersToday
+  } catch (error) {
+    console.error(`Error fetching order count for ${uid}:`, error)
+    return 0
+  }
 }
 
 const getTodayOrderCount = async (uid: string) => {
@@ -1060,7 +1108,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
   }
 }
 
-const parseTimestamp = (timestampStr: any) => {
+export const parseTimestamp = (timestampStr: any) => {
   try {
     const parsedDate = moment(timestampStr, [moment.ISO_8601, "DD/MM/YYYY HH:mm:ss", "DD-MM-YYYY HH:mm:ss"], true)
 

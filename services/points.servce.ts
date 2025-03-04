@@ -48,7 +48,9 @@ export const aggregatePointsSummary = async () => {
 
 export const createOrRefreshLeaderboardView = async () => {
   try {
-    const todayDate = new Date().toISOString().split("T")[0] // YYYY-MM-DD
+    const todayDate = new Date().toLocaleString("en-CA").split(",")[0] // YYYY-MM-DD
+    // const todayDate = new Date().toISOString().split("T")[0] // YYYY-MM-DD
+    console.log("todayDate", new Date().toLocaleString("en-CA"), todayDate)
 
     const orderCheck = await prisma.$queryRaw`
   SELECT COUNT(*) AS order_count
@@ -64,44 +66,71 @@ export const createOrRefreshLeaderboardView = async () => {
 
     // Create the new daily leaderboard view
     const previewResults = await prisma.$executeRawUnsafe(`
- CREATE OR REPLACE VIEW daily_top_leaderboard AS
-WITH first_status AS (
+CREATE VIEW daily_top_leaderboard AS
+WITH cancelled_orders AS (
+    -- Get order_ids that have at least one cancelled or partially_cancelled order
+    SELECT DISTINCT order_id
+    FROM public."orderData"
+    WHERE order_status IN ('cancelled', 'partially_cancelled')
+),
+filtered_orders AS (
+    -- Filter orders that are NOT in the cancelled_orders list
     SELECT 
         game_id,
         order_id,
         points,
-        gmv,
-        order_status,
-        timestamp_created,
-        -- Get the first status for each order_id within the day
-        ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
+        gmv
     FROM public."orderData"
-    WHERE timestamp_created >= CURRENT_DATE
-      AND timestamp_created < CURRENT_DATE + INTERVAL '1 day'
+    WHERE timestamp_created >= DATE_TRUNC('day', '${todayDate}'::TIMESTAMP)
+          AND timestamp_created < DATE_TRUNC('day', '${todayDate}'::TIMESTAMP) + INTERVAL '1 day'
+          AND order_id NOT IN (SELECT order_id FROM cancelled_orders) -- Exclude cancelled orders
 ),
-valid_orders AS (
-    SELECT
+aggregated_orders AS (
+    -- Aggregate at order_id level first
+    SELECT 
         game_id,
         order_id,
-        points,
-        gmv,
-        order_status,
-        -- Only include orders where the first status is 'created'
-        CASE WHEN rn = 1 AND order_status = 'created' THEN 1 ELSE 0 END AS valid_order
-    FROM first_status
+        SUM(points) AS total_order_points,
+        SUM(gmv) AS total_order_gmv,
+        COUNT(*) AS valid_orders
+    FROM filtered_orders
+    GROUP BY game_id, order_id
 )
+-- Final aggregation by game_id
 SELECT 
     game_id,
-    SUM(points)::DOUBLE PRECISION AS total_points,
-    COUNT(valid_order) AS total_orders,  -- Count only valid orders
-    SUM(gmv)::BIGINT AS total_gmv,
-    CURRENT_DATE AS leaderboard_day_start
-FROM valid_orders
-WHERE valid_order = 1  -- Only count valid orders
-GROUP BY game_id
-HAVING SUM(points) >= 0  -- Exclude users with negative points
-ORDER BY total_points DESC;
+    SUM(total_order_points) AS total_points,
+    SUM(total_order_gmv) AS total_gmv,
+    SUM(valid_orders) AS total_orders
+FROM aggregated_orders
+GROUP BY game_id;
     `)
+    //  leaderboard with cancleed order points, gmv included except order count
+    // const previewResults = await prisma.$executeRawUnsafe(`
+    //     CREATE VIEW daily_top_leaderboard AS
+    //     WITH order_points AS (
+    //         SELECT 
+    //             game_id,
+    //             order_id,
+    //             SUM(points) AS total_order_points,
+    //             SUM(gmv) AS total_order_gmv,
+    //             COUNT(CASE WHEN order_status NOT IN ('cancelled', 'partially_cancelled') THEN 1 END) AS valid_orders
+    //         FROM public."orderData"
+    //        WHERE timestamp_created >= DATE_TRUNC('day', '${todayDate}'::TIMESTAMP)
+    //   AND timestamp_created < DATE_TRUNC('day', '${todayDate}'::TIMESTAMP) + INTERVAL '1 day'
+    //         GROUP BY game_id, order_id
+    //     )
+    //   SELECT 
+    //       game_id,
+    //       COALESCE(SUM(order_points.total_order_points), 0) AS total_points,
+    //       COUNT(DISTINCT order_points.order_id) AS total_orders,
+    //       COALESCE(SUM(order_points.total_order_gmv), 0) AS total_gmv
+    //   FROM order_points
+    //   WHERE game_id IS NOT NULL  -- Ensures game_id is valid
+    //   GROUP BY game_id
+    //   ORDER BY total_points DESC;
+    //   `)
+    // HAVING SUM(total_order_points) > 0
 
     console.log(`Leaderboard view updated for ${todayDate} with cancellation handling, ${previewResults}`)
     return {
@@ -248,45 +277,60 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
     }
 
     // Create or refresh the monthly leaderboard view
-    const previewResults = await prisma.$executeRawUnsafe(`
-        CREATE OR REPLACE VIEW monthly_top_leaderboard AS
-WITH first_status AS (
-    SELECT 
-        game_id,
-        order_id,
-        points,
-        gmv,
-        order_status,
-        timestamp_created,
-        -- Rank orders by timestamp_created, ensuring we get the first status for each order_id
-        ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
-    FROM public."orderData"
-    WHERE DATE(timestamp_created) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
-),
-valid_orders AS (
-    SELECT
-        game_id,
-        order_id,
-        points,
-        gmv,
-        order_status,
-        -- Only include orders where the first status is 'created'
-        CASE WHEN rn = 1 AND order_status = 'created' THEN 1 ELSE 0 END AS valid_order
-    FROM first_status
-)
-SELECT 
-    game_id,
-    SUM(points)::DOUBLE PRECISION AS total_points,
-    COUNT(valid_order) AS total_orders,  -- Count only the valid orders
-    SUM(gmv)::BIGINT AS total_gmv,
-    '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
-FROM valid_orders
-WHERE valid_order = 1  -- Only count valid orders
-GROUP BY game_id
-HAVING SUM(points) >= 0  -- Exclude users with negative points
-ORDER BY total_points DESC;
+    //     const previewResults = await prisma.$executeRawUnsafe(`
+    //         CREATE OR REPLACE VIEW monthly_top_leaderboard AS
+    // WITH first_status AS (
+    //     SELECT
+    //         game_id,
+    //         order_id,
+    //         points,
+    //         gmv,
+    //         order_status,
+    //         timestamp_created,
+    //         -- Rank orders by timestamp_created, ensuring we get the first status for each order_id
+    //         ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
+    //     FROM public."orderData"
+    //     WHERE DATE(timestamp_created) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
+    // ),
+    // valid_orders AS (
+    //     SELECT
+    //         game_id,
+    //         order_id,
+    //         points,
+    //         gmv,
+    //         order_status,
+    //         -- Only include orders where the first status is 'created'
+    //         CASE WHEN rn = 1 AND order_status = 'created' THEN 1 ELSE 0 END AS valid_order
+    //     FROM first_status
+    // )
+    // SELECT
+    //     game_id,
+    //     SUM(points)::DOUBLE PRECISION AS total_points,
+    //     COUNT(valid_order) AS total_orders,  -- Count only the valid orders
+    //     SUM(gmv)::BIGINT AS total_gmv,
+    //     '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
+    // FROM valid_orders
+    // WHERE valid_order = 1  -- Only count valid orders
+    // GROUP BY game_id
+    // HAVING SUM(points) >= 0  -- Exclude users with negative points
+    // ORDER BY total_points DESC;
 
-    `)
+    //     `)
+
+    const previewResults = await prisma.$executeRawUnsafe(`
+  CREATE OR REPLACE VIEW monthly_top_leaderboard AS
+  SELECT 
+      game_id, 
+      SUM(points)::DOUBLE PRECISION AS total_points,  -- Ensure total_points is FLOAT
+      COUNT(order_id)::BIGINT AS total_orders,  -- Ensure total_orders remains BIGINT
+      SUM(gmv)::BIGINT AS total_gmv,  -- Ensure total_gmv is BIGINT
+      '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
+
+  FROM public."orderData"
+  WHERE DATE(timestamp_created) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
+  GROUP BY game_id
+  ORDER BY total_points DESC;
+`)
 
     console.log(`Monthly leaderboard view updated for the month starting ${currentMonthStartStr}, ${previewResults}`)
     return {
