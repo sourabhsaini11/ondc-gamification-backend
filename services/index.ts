@@ -2,95 +2,10 @@ import fs from "fs"
 import csvParser from "csv-parser"
 import { PrismaClient } from "@prisma/client"
 import moment from "moment-timezone"
+import { blake2b } from "blakejs"
 // import dayjs from "dayjs"
 
 const prisma = new PrismaClient()
-
-// type OrderRecord = {
-//   order_id: string
-//   order_status: string
-// }
-
-// interface CsvRow {
-//   uid: string
-//   name: string
-//   orderId: string
-//   orderStatus: string
-//   timestampCreated: string
-//   timestampUpdated: string
-//   category: string
-//   buyerAppId: string
-//   base_price: string
-//   shipping_charges: string
-//   taxes: string
-//   discount: string
-//   convenience_fee: string
-//   sellerId: string
-// }
-
-// export const parseAndStoreCsv = async (filePath: string): Promise<void> => {
-//   const records: CsvRow[] = []
-
-//   return new Promise((resolve, reject) => {
-//     fs.createReadStream(filePath)
-//       .pipe(csvParser())
-//       .on("data", (row) => {
-//         const formattedRow: CsvRow = {
-//           uid: row["uid"],
-//           name: row["Name"],
-//           orderId: row["Order ID"],
-//           orderStatus: row["Order Status"],
-//           timestampCreated: row["Timestamp Created"],
-//           timestampUpdated: row["Timestamp Updated"],
-//           category: row["Category"],
-//           buyerAppId: row["Buyer App ID"],
-//           base_price: row["Base Price"],
-//           shipping_charges: row["Shipping Charges"],
-//           taxes: row["Taxes"],
-//           discount: row["Discount"],
-//           convenience_fee: row["Conveniance fee"],
-//           sellerId: row["Seller ID"],
-//         }
-//         records.push(formattedRow)
-//       })
-//       .on("end", async () => {
-//         try {
-//           if (records.length > 0) {
-
-//             for (let user of records){
-//               const uid = user.uid;
-//             const orderId = user.orderId;
-//             const orderStatus = user.orderStatus;
-//              const timestampCreated = user.timestampCreated
-
-//             }
-
-//             await prisma.orderData.createMany({
-//               data: records,
-//               skipDuplicates: true,
-//             })
-//             console.log("✅ CSV data stored successfully")
-
-//             await updateLeaderboard()
-//           } else {
-//             console.log("⚠️ No valid records found in the CSV file")
-//           }
-
-//           resolve()
-//         } catch (error) {
-//           console.error("❌ Error storing CSV data:", error)
-//           reject(error)
-//         } finally {
-//           fs.unlinkSync(filePath)
-//           await prisma.$disconnect()
-//         }
-//       })
-//       .on("error", (error) => {
-//         console.error("❌ Error reading CSV file:", error)
-//         reject(error)
-//       })
-//   })
-// }
 
 export const parseAndStoreCsv = async (filePath: string, userId: number): Promise<void> => {
   const records: {
@@ -111,7 +26,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
     uploaded_by: number
   }[] = []
   // const uidFirstOrderTimestamp = new Map()
-  const recordMap = new Map<string, string>()
+  const recordMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
   return new Promise((resolve, reject) => {
     fs.createReadStream(filePath)
       .pipe(csvParser())
@@ -131,7 +46,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             "order_status",
             "timestamp_created",
             "timestamp_updated",
-            "category",
+            "domain",
             "buyer_app_id",
             "base_price",
             "shipping_charges",
@@ -144,7 +59,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
           const missingFields = requiredFields.filter((field) => !normalizedRow[field])
 
           if (missingFields.length > 0) {
-            console.warn(`Missing fields in row: ${missingFields.join(", ")}`)
+            return reject(`Fields are missing ${missingFields}`)
           }
 
           const orderId = normalizedRow["order_id"]
@@ -160,9 +75,11 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             return
           }
 
-          
-
-          if (!recordMap.has(orderId as string) || recordMap.get(orderId as string) !== normalizedRow["order_status"]) {
+          if (
+            !recordMap.has(orderId as string) ||
+            recordMap.get(orderId as string)?.orderStatus !== normalizedRow["order_status"] ||
+            recordMap.get(orderId as string)?.buyerAppId !== normalizedRow["buyer_app_id"]
+          ) {
             records.push({
               uid: String(normalizedRow["phone_number"])?.trim(),
               name: normalizedRow["name"],
@@ -170,7 +87,7 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
               order_status: String(normalizedRow["order_status"])?.toLowerCase(),
               timestamp_created: timestampCreated,
               timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])),
-              category: normalizedRow["category"],
+              category: normalizedRow["domain"],
               buyer_app_id: normalizedRow["buyer_app_id"],
               base_price: parseFloat(String(normalizedRow["base_price"])) || 0,
               shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
@@ -182,7 +99,10 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
             })
 
             // Store order_id with its order_status in Map
-            recordMap.set(orderId as string, normalizedRow["order_status"] as string)
+            recordMap.set(orderId as string, {
+              orderStatus: normalizedRow["order_status"] as string,
+              buyerAppId: normalizedRow["buyer_app_id"] as string,
+            })
           } else {
             console.warn(`Duplicate order_id ${orderId} with status ${normalizedRow["order_status"]} skipped.`)
           }
@@ -198,6 +118,10 @@ export const parseAndStoreCsv = async (filePath: string, userId: number): Promis
           if (records.length === 0) {
             console.log("⚠️ No valid records found in the CSV file")
             return resolve()
+          }
+
+          if (records.length > 100000) {
+            return reject("Records Length Exceeded above 10000")
           }
 
           // console.log("records", records)
@@ -460,7 +384,11 @@ const processNewOrders = async (orders: any) => {
           }
 
           const firstName = row.name ? row.name.split(" ")[0] : "User"
-          const lastUidDigits = uid.length >= 4 ? uid.slice(-4) : uid
+          let lastUidDigits = uid.length >= 4 ? uid.slice(-4) : uid
+
+          // Hash the lastUidDigits using BLAKE2b-512
+          const hash = blake2b(lastUidDigits, undefined, 64) // 64-byte (512-bit) hash
+          lastUidDigits = Buffer.from(hash).toString("hex").substring(0, 4)
           lastStreakDate = timestampCreated
           game_id = `${firstName}${uidFirstOrderTimestamp[uid]}${lastUidDigits}`
         }
@@ -1014,10 +942,10 @@ const bulkInsertDataIntoDb = async (data: any) => {
   // Step 2: Create a Set of {uid, game_id} combinations to filter data
   const blacklistedUsers = new Set(usersWithExcessiveCancellations.map(({ game_id }) => game_id))
 
-  // Step 3: Filter out users from `data` who match the blacklist
+  // // Step 3: Filter out users from `data` who match the blacklist
   const filteredData = data.filter((item: any) => !blacklistedUsers.has(item.game_id))
 
-  // Filter new orders where either order_id is new OR order_status is new for an existing order_id
+  // // Filter new orders where either order_id is new OR order_status is new for an existing order_id
   const newOrders = filteredData.filter(
     (row: any) =>
       !existingOrdersMap.has(row.order_id) || // New order_id
@@ -1031,7 +959,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
       order_status: row.order_status,
       timestamp_created: row.timestamp_created,
       timestamp_updated: row.timestamp_updated,
-      category: row.category,
+      domain: row.domain,
       buyer_app_id: row.buyer_app_id,
       base_price: parseFloat(row.base_price || 0),
       shipping_charges: parseFloat(row.shipping_charges || 0),

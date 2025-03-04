@@ -22,7 +22,7 @@ model OrderData {
   order_status           String   @default("Pending")
   timestamp_created      DateTime @default(now())
   timestamp_updated      DateTime @default(now())
-  category               String   @default("")
+  domain               String   @default("")
   buyer_app_id           String   @default("")
   base_price             Float    @default(0.00)
   shipping_charges       Float    @default(0.00)
