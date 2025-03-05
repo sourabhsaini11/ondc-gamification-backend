@@ -10,6 +10,7 @@ import {
   getMonthlyLeaderboardData,
   getWeeklyLeaderboardData,
   leaderboardTrigger,
+  rewardLedgerTrigger,
 } from "../../services/points.servce"
 // import { logger } from "../../shared/logger"
 
@@ -27,7 +28,10 @@ const orderController = {
         return res.status(400).json({ success: false, message: result.message })
       }
 
+      
       leaderboardTrigger()
+      rewardLedgerTrigger()
+      
       return res.status(200).json({ success: true, message: result.message })
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message || "Internal Server Error" })
