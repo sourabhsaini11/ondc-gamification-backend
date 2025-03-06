@@ -219,6 +219,17 @@ cancelled_orders AS (
     SELECT order_id, game_id
     FROM all_orders
     WHERE order_status = 'cancelled'
+),
+valid_orders AS (  -- 
+    SELECT 
+        c.game_id,
+        c.order_id,
+        c.points,
+        c.gmv,
+        1 AS valid_order  -- Mark these as valid orders
+    FROM created_orders c
+    LEFT JOIN cancelled_orders co ON c.order_id = co.order_id
+    WHERE co.order_id IS NULL  -- Exclude cancelled orders
 )
 SELECT 
     game_id,
@@ -226,11 +237,11 @@ SELECT
     COUNT(valid_order) AS total_orders,  -- Count only valid orders
     SUM(gmv)::BIGINT AS total_gmv,
     DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)::DATE AS leaderboard_week_start
-FROM valid_orders
-WHERE valid_order = 1  -- Only count valid orders
+FROM valid_orders  -- 
 GROUP BY game_id
 HAVING SUM(points) >= 0  -- Exclude users with negative points
 ORDER BY total_points DESC;
+
     `)
 
     console.log(`Weekly leaderboard view updated for the week starting ${currentWeekStartStr}., ${previewResults}`)
