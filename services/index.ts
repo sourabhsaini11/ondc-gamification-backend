@@ -53,7 +53,7 @@ export const parseAndStoreCsv = async (
           )
           if (check) {
             console.error("Values cant be empty")
-            return reject({ success: false, message: "Values can't be empty or invalid" })
+            return reject({ success: false, message: `Values can't be empty or invalid at index:${rowCount}` })
           }
 
           const requiredFields = [
@@ -62,7 +62,6 @@ export const parseAndStoreCsv = async (
             "order_id",
             "order_status",
             "timestamp_created",
-            "timestamp_updated",
             "domain",
             "buyer_app_id",
             "base_price",
@@ -79,6 +78,8 @@ export const parseAndStoreCsv = async (
             console.error(`❌ Missing Fields: ${missingFields.join(", ")}`)
             return reject({ success: false, message: `Fields are missing: ${missingFields.join(", ")}` })
           }
+
+          requiredFields.push("timestamp_updated")
 
           const extraFields = rowKeys.filter((key) => !requiredFields.includes(key))
           if (extraFields.length > 0) {
@@ -97,7 +98,7 @@ export const parseAndStoreCsv = async (
             ) {
               return reject({
                 success: false,
-                message: `Duplicate Order ID: ${orderId} with status 'created' found multiple times for the same buyer.`,
+                message: `Duplicate Order ID: ${orderId} with status 'created' found multiple times for the same buyer at index:${rowCount}`,
               })
             }
           }
@@ -111,7 +112,7 @@ export const parseAndStoreCsv = async (
 
           if (isNaN(timestampCreated.getTime())) {
             console.log(`Invalid timestamp for order ${orderId}`)
-            return reject({ success: false, message: `Invalid timestamp for order ${orderId}` })
+            return reject({ success: false, message: `Invalid timestamp for order ${orderId} at index:${rowCount}` })
           }
 
           // if (
@@ -204,6 +205,82 @@ export const parseAndStoreCsv = async (
         reject({ success: false, message: "Error reading CSV file: " + error })
       })
   })
+}
+
+export const aggregateDailyGmvAndPoints = async () => {
+  try {
+    console.log("🔄 Aggregating daily GMV and points...")
+
+    // Get distinct dates using prisma.$queryRawUnsafe
+    const uniqueDates = await prisma.$queryRawUnsafe<{ date: any }[]>(
+      `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date 
+FROM "orderData";
+`,
+    )
+
+    console.log("uniqueDates", uniqueDates)
+
+    for (const { date } of uniqueDates) {
+      // Find the game with the highest GMV for the date
+      const highestGmv = await prisma.$queryRawUnsafe<{ game_id: string }[]>(
+        `SELECT id, game_id 
+         FROM "orderData" 
+         WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
+         GROUP BY id, game_id 
+         ORDER BY SUM(gmv) DESC 
+         LIMIT 1;`,
+      )
+
+      console.log("highestGmv", highestGmv)
+
+      // Find the game with the highest order count for the date
+      const highestOrders = await prisma.$queryRawUnsafe<{ game_id: string }[]>(
+        `SELECT id, game_id 
+         FROM "orderData" 
+         WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
+         GROUP BY id, game_id 
+         ORDER BY COUNT(order_id) DESC 
+         LIMIT 1;`,
+      )
+
+      console.log("highestOrders", highestOrders)
+
+      const topGmvGame: any = highestGmv[0]
+      const topOrdersGame: any = highestOrders[0]
+
+      if (topGmvGame && topOrdersGame) {
+        if (topGmvGame.id === topOrdersGame.id) {
+          await prisma.$queryRawUnsafe(
+            `UPDATE "orderData" 
+             SET points = points + 200
+             WHERE id = $1;`,
+            topGmvGame.id,
+          )
+          console.log(`✅ Updated id ${topGmvGame.id} with 200 points`)
+        } else {
+          await prisma.$queryRawUnsafe(
+            `UPDATE "orderData" 
+             SET points = points + 100
+             WHERE id = $1;`,
+            topGmvGame.id,
+          )
+          console.log(`✅ Updated id ${topGmvGame.id} with 100 points`)
+
+          await prisma.$queryRawUnsafe(
+            `UPDATE "orderData" 
+             SET points = points + 100
+             WHERE id = $1;`,
+            topOrdersGame.id,
+          )
+          console.log(`✅ Updated id ${topOrdersGame.id} with 100 points`)
+        }
+      }
+    }
+
+    console.log("✅ Daily GMV and points aggregation completed.")
+  } catch (error) {
+    console.error("❌ Error aggregating daily GMV and points:", error)
+  }
 }
 
 // const updateLeaderboard = async () => {
@@ -422,17 +499,19 @@ const processNewOrders = async (orders: any) => {
           }
 
           const firstName = row.name ? row.name.split(" ")[0] : "User"
+          const firstUidDigits = uid.slice(3)
           const lastUidDigits = uid.length >= 4 ? uid.slice(-4) : uid
           // Hash the lastUidDigits using BLAKE2b-512
           // const hash = blake2b(lastUidDigits, undefined, 64) // 64-byte (512-bit) hash
           // const hashedlastUidDigits = Buffer.from(hash).toString("hex")
           // console.log("hashedlastUidDigits", hashedlastUidDigits)
           lastStreakDate = timestampCreated
-          const temp_id = `${firstName}${uidFirstOrderTimestamp[uid]}${lastUidDigits}`
+          // const temp_id = `${firstName}${uidFirstOrderTimestamp[uid]}${lastUidDigits}`
+          const temp_id = `${firstUidDigits}${firstName}${lastUidDigits}`
           const hash = blake2b(temp_id, undefined, 64) // 64-byte (512-bit) hash
           const hashedId = Buffer.from(hash).toString("hex")
           game_id = hashedId
-          phone_number = "XXXXXX" + lastUidDigits
+          // phone_number = "XXXXXX" + lastUidDigits
         }
 
         // Calculate GMV
@@ -444,6 +523,8 @@ const processNewOrders = async (orders: any) => {
 
         console.log("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
         const points = await calculatePoints(gmv, uid, streakCount, "newOrder", timestampCreated, 0, row.order_id)
+        const orderCount = await getTodayOrderCount2(uid, timestampCreated, row.order_id)
+
         console.log("sec---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
 
         // console.log("potins", game_id, points)
@@ -462,6 +543,7 @@ const processNewOrders = async (orders: any) => {
           game_id,
           points: points,
           entry_updated: true,
+          same_day_order_count: orderCount,
           streak_maintain: streakMaintain,
           highest_gmv_for_day: false,
           highest_orders_for_day: false,
@@ -512,7 +594,7 @@ const processCancellations = async (cancellations: any) => {
           originalOrder &&
           (await prisma.orderData.count({
             where: {
-              uid: originalOrder.uid, // Assuming `userId` is a field in `orderData` that references the `User` table
+              uid: originalOrder.uid,
               order_status: {
                 in: ["cancelled", "partially_cancelled"], // Only count orders that are canceled or partially canceled
               },
@@ -535,7 +617,7 @@ const processCancellations = async (cancellations: any) => {
               order_status: "created", // Only consider orders with status 'created'
             },
           }))
-        const tPoint = totalPoints ? -totalPoints : 0
+        // const tPoint = totalPoints ? -totalPoints : 0
         console.log(`Total points for user ${originalOrder?.uid}:`, totalPoints)
 
         if (!originalOrder) {
@@ -550,6 +632,8 @@ const processCancellations = async (cancellations: any) => {
           last_streak_date,
           gmv: originalGmv,
           order_status,
+          same_day_order_count,
+          streak_count,
         } = originalOrder
 
         console.log("originalGmv", originalGmv), order_status
@@ -574,12 +658,15 @@ const processCancellations = async (cancellations: any) => {
         if (orderStatus === "cancelled") {
           newGmv = 0 // Full cancellation resets GMV
           pointsAdjustment = -originalPoints
-          if (canceledOrderCount == 0) {
-            console.log("------->")
-            pointsAdjustment = -(originalPoints + 200)
-          } else if (canceledOrderCount == 1) {
-            pointsAdjustment = -tPoint
-          }
+          // if (canceledOrderCount == 0) {
+          //   console.log("------->")
+          //   pointsAdjustment = -(originalPoints + 200)
+          // } else if (canceledOrderCount == 1) {
+          //   pointsAdjustment = -tPoint
+          // }
+
+          await deductPointsForHigherSameDayOrders(uid, orderId, timestampCreated, gameId, same_day_order_count)
+          await deductStreakPointsForFutureOrders(uid, orderId, timestampCreated, gameId, streak_count)
         } else {
           // Partially cancelled, recalculate points with streak as 0
           const newPoints = await calculatePoints(newGmv, uid, 0, "partial", timestampCreated, originalGmv, orderId)
@@ -854,14 +941,215 @@ const calculatePoints = async (
       21: 500,
       28: 700,
     }
+    const eligibleBonus = Math.max(
+      ...Object.keys(streakBonuses)
+        .map(Number)
+        .filter((key) => key <= streakCount),
+    )
 
-    if (streakBonuses[streakCount]) {
-      points += streakBonuses[streakCount]
+    if (streakBonuses[eligibleBonus]) {
+      points += streakBonuses[eligibleBonus]
     }
   }
 
   console.log("points", points)
   return points
+}
+
+const deductStreakPointsForFutureOrders = async (
+  uid: string,
+  orderId: string,
+  timestamp_created: string,
+  game_id: string,
+  streak_count: number,
+) => {
+  try {
+    const startOfDay = new Date(timestamp_created)
+    startOfDay.setHours(0, 0, 0, 0)
+    const endOfDay = new Date(timestamp_created)
+    endOfDay.setHours(23, 59, 59, 999)
+
+    console.log("streak_count", streak_count)
+
+    // Streak bonus map
+    const streakBonuses: Record<number, number> = {
+      4: 20,
+      8: 30,
+      11: 100,
+      15: 200,
+      22: 500,
+      29: 700,
+    }
+
+    // Extract streak thresholds sorted in ascending order
+    const streakThresholds = Object.keys(streakBonuses)
+      .map(Number)
+      .sort((a, b) => a - b)
+
+    const canceledOrders = await prisma.orderData.findMany({
+      where: {
+        uid: uid,
+        game_id: game_id,
+        timestamp_created: { gte: startOfDay, lte: endOfDay },
+        order_status: "cancelled",
+      },
+      select: { order_id: true },
+    })
+    const canceledOrderIds = canceledOrders.map((order) => order.order_id)
+
+    // Check if more orders exist for the same user, game, and day
+    const sameDayOrders = await prisma.orderData.findMany({
+      where: {
+        uid: uid,
+        game_id: game_id,
+        timestamp_created: { gte: startOfDay, lte: endOfDay },
+        NOT: { order_id: { in: [...canceledOrderIds, orderId] } },
+      },
+    })
+
+    console.log("sameDayOrders", sameDayOrders)
+
+    // Deduct points for the current order based on its streak count
+    let currentOrderPointsToDeduct = 0
+    for (const threshold of streakThresholds) {
+      if (streak_count >= threshold) {
+        currentOrderPointsToDeduct = streakBonuses[threshold]
+      } else {
+        break
+      }
+    }
+
+    const currentOrder: any = await prisma.orderData.findFirst({
+      where: { order_id: orderId, uid: uid, game_id: game_id },
+      select: { id: true },
+    })
+
+    const updatedCurrentStreak = Math.max(streak_count - 1, 1)
+
+    await prisma.orderData.update({
+      where: { id: currentOrder.id },
+      data: {
+        points: currentOrderPointsToDeduct > 0 ? { decrement: currentOrderPointsToDeduct } : undefined,
+        streak_count: 0,
+        updated_by_lambda: new Date().toISOString(),
+      },
+    })
+    console.log(
+      `Deducted ${currentOrderPointsToDeduct} points from current order ${orderId}, streak updated to ${updatedCurrentStreak}`,
+    )
+
+    // If other orders exist on the same day, we skip deductions for future orders
+    if (sameDayOrders.length > 0) {
+      console.log(`Skipping future deductions because other orders exist for game_id ${game_id} on this day.`)
+      return
+    }
+
+    console.log(
+      `No other orders found for game_id ${game_id} on this day, proceeding with streak reduction for future orders.`,
+    )
+
+    // Find all future orders (same day and later) for the same user & game
+    const futureOrders = await prisma.orderData.findMany({
+      where: {
+        uid: uid,
+        game_id: game_id,
+        timestamp_created: { gte: startOfDay },
+        NOT: { order_id: orderId },
+      },
+      orderBy: { timestamp_created: "asc" },
+    })
+
+    console.log("futureOrders", futureOrders)
+
+    let totalDeducted = 0
+
+    for (const order of futureOrders) {
+      console.log("Processing order:", order.order_id)
+
+      if (order.streak_count === 1) {
+        console.log(`Stopping deduction at order ${order.order_id} (streak == 1)`)
+        break
+      }
+
+      let pointsToDeduct = 0
+      for (const threshold of streakThresholds) {
+        if (order.streak_count >= threshold) {
+          pointsToDeduct = streakBonuses[threshold]
+        } else {
+          break
+        }
+      }
+
+      const updatedStreak = Math.max(order.streak_count - streak_count, 1)
+      console.log("updatedStreak", order.streak_count, updatedStreak)
+
+      const logs = await prisma.orderData.update({
+        where: { id: order.id },
+        data: {
+          points: pointsToDeduct > 0 ? { decrement: pointsToDeduct } : undefined,
+          streak_count: updatedStreak,
+          updated_by_lambda: new Date().toISOString(),
+        },
+      })
+      console.log("logs", logs)
+
+      if (pointsToDeduct > 0) {
+        totalDeducted += pointsToDeduct
+        console.log(`Deducted ${pointsToDeduct} points from order ${order.order_id}`)
+      } else {
+        console.log(`No points deducted for order ${order.order_id}, but streak count was reduced.`)
+      }
+    }
+
+    console.log(`Total points deducted: ${totalDeducted}`)
+  } catch (error) {
+    console.error("Error deducting streak points:", error)
+  }
+}
+
+const deductPointsForHigherSameDayOrders = async (
+  uid: string,
+  orderId: string,
+  timestamp_created: string,
+  game_id: string,
+  same_day_order_count: number,
+) => {
+  try {
+    const startOfDay = new Date(timestamp_created)
+    startOfDay.setHours(0, 0, 0, 0)
+
+    const endOfDay = new Date(timestamp_created)
+    endOfDay.setHours(23, 59, 59, 999)
+
+    const updatedOrders = await prisma.orderData.updateMany({
+      where: {
+        uid: uid, // Same user
+        game_id: game_id, // Same game
+        timestamp_created: {
+          gte: startOfDay,
+          lt: endOfDay,
+        },
+        same_day_order_count: {
+          gt: same_day_order_count,
+        },
+        NOT: {
+          order_id: orderId,
+        },
+      },
+      data: {
+        points: {
+          decrement: 5,
+        },
+        updated_by_lambda: new Date().toISOString(),
+      },
+    })
+
+    console.log("updatedOrders", updatedOrders)
+
+    console.log(`Updated ${updatedOrders.count} orders by deducting 5 points.`)
+  } catch (error) {
+    console.error("Error updating points:", error)
+  }
 }
 
 const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string) => {
@@ -1081,6 +1369,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
       points: parseFloat(row.points || 0),
       entry_updated: row.entry_updated,
       streak_maintain: row.streak_maintain,
+      same_day_order_count: row.same_day_order_count || 1,
       highest_gmv_for_day: row.highest_gmv_for_day,
       highest_orders_for_day: row.highest_orders_for_day,
       updated_by_lambda: row.updated_by_lambda,
@@ -1092,6 +1381,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
 
     await prisma.orderData.createMany({ data: formattedData })
     console.log(`Bulk data inserted successfully.`)
+    // await prisma.$executeRawUnsafe(`SELECT update_leaderboard_manual()`)
   } catch (error) {
     console.error(`Error inserting bulk data`, error)
   }
@@ -1135,5 +1425,134 @@ export const getUserOrders = async (userId: number, page: number = 1, limit: num
   } catch (error) {
     console.error("Error fetching user orders:", error)
     throw new Error("Failed to fetch user orders")
+  }
+}
+
+export const rewardLedgerTrigger = async () => {
+  try {
+    console.log("🔄 Setting up rewardledger trigger...")
+
+    // Create or replace the function
+    const res = await prisma.$executeRawUnsafe(`
+  CREATE OR REPLACE FUNCTION rewardledger_function()
+RETURNS TRIGGER AS $$
+DECLARE
+    order_count INT;
+    streak_days INT;
+    streak_bonus INT;
+    order_points DECIMAL;
+    streakBonuses JSONB;
+    current_game_id TEXT;
+    current_order_count INT;
+    last_order_date DATE;
+    is_cancelled BOOLEAN;
+BEGIN
+    -- Streak bonuses map for consecutive days
+    streakBonuses := '{"3": 20, "7": 30, "10": 100, "14": 200, "21": 500, "28": 700}';
+
+    -- Get the game_id and order status for the current order
+    current_game_id := NEW.game_id;
+    is_cancelled := NEW.order_status = 'cancelled';  -- Only fully cancelled orders deduct points
+
+    -- Create a temporary table to store RepeatOrderCount data
+    CREATE TEMP TABLE IF NOT EXISTS RepeatOrderCount (
+        game_id TEXT,
+        order_id TEXT,
+        timestamp_created DATE,
+        count INT
+    ) ON COMMIT DROP;
+
+    -- Check if game_id and timestamp_created exist in RepeatOrderCount
+    SELECT count
+    INTO current_order_count
+    FROM RepeatOrderCount
+    WHERE game_id = current_game_id
+      AND timestamp_created = DATE(NEW.timestamp_created);
+
+    IF FOUND THEN
+        -- Increment the count for repeat orders on the same day
+        UPDATE RepeatOrderCount
+        SET count = count + 1
+        WHERE game_id = current_game_id
+          AND timestamp_created = DATE(NEW.timestamp_created);
+
+        -- Get the new order count for this game_id and day
+        SELECT count INTO order_count
+        FROM RepeatOrderCount
+        WHERE game_id = current_game_id
+          AND timestamp_created = DATE(NEW.timestamp_created);
+
+        -- Calculate order points (order_count * 5 points)
+        order_points := order_count * 5;
+    ELSE
+        -- Create a new entry for this game_id and timestamp_created if not found
+        INSERT INTO RepeatOrderCount (game_id, order_id, timestamp_created, count)
+        VALUES (current_game_id, NEW.order_id, DATE(NEW.timestamp_created), 1);
+
+        -- Assign points for the first order on this day
+        order_points := 5;
+    END IF;
+
+    -- Insert into rewardledger for the current order
+    IF is_cancelled THEN
+        -- Deduct points for the cancelled order
+        INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+        VALUES (NEW.order_id, current_game_id, -order_points, 'Order cancelled - points deducted', NOW());
+    ELSE
+        -- Insert into rewardledger for the current order
+        INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+        VALUES (NEW.order_id, current_game_id, order_points, 'Order placed - points assigned based on order count', NOW());
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+            streak_bonus := (streakBonuses ->> '3')::INT;
+        END IF;
+    END IF;
+
+    -- Ensure daily order points are always inserted
+    INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+    VALUES 
+        (NEW.order_id, NEW.game_id, order_points, 'Daily order points', NOW()),
+        (NEW.order_id, NEW.game_id, gmv_points, 'GMV-based bonus', NOW());
+
+    -- Insert high-value bonus if applicable
+    IF high_value_bonus > 0 THEN
+        INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+        VALUES (NEW.order_id, NEW.game_id, high_value_bonus, 'High GMV order bonus', NOW());
+    END IF;
+
+    -- Insert streak bonus if applicable
+    IF streak_bonus > 0 THEN
+        INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+        VALUES (NEW.order_id, NEW.game_id, streak_bonus, 'Streak bonus - consecutive orders', NOW());
+    END IF;
+
+    RAISE NOTICE 'Rewards added for order_id %: Order Points %, GMV Points %, High-Value Bonus %, Streak Bonus %', 
+        NEW.order_id, order_points, gmv_points, high_value_bonus, streak_bonus;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+    `)
+
+    console.log("✅ RewardLedger trigger function created successfully!", res)
+
+    // Remove old rewardledger trigger if it exists
+    await prisma.$executeRawUnsafe(`
+      DROP TRIGGER IF EXISTS trigger_reward_ledger ON "orderData";
+    `)
+    console.log("🔄 Old rewardledger trigger removed (if it existed).")
+
+    // Create the new rewardledger trigger
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER rewardledger_trigger
+      AFTER INSERT OR UPDATE OR DELETE ON "orderData"
+      FOR EACH ROW
+      EXECUTE FUNCTION rewardledger_function();
+    `)
+    console.log("✅ New rewardledger trigger created successfully.")
+  } catch (error) {
+    console.error("❌ Error setting up rewardledger trigger:", error)
   }
 }

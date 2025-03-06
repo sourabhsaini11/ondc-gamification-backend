@@ -1,5 +1,5 @@
 import { Request, Response } from "express"
-import { parseAndStoreCsv, getUserOrders, getOrders } from "../../services"
+import { parseAndStoreCsv, getUserOrders, getOrders, rewardLedgerTrigger } from "../../services"
 import {
   aggregatePointsSummary,
   createOrRefreshLeaderboardView,
@@ -28,6 +28,7 @@ const orderController = {
       }
 
       leaderboardTrigger()
+      rewardLedgerTrigger()
       return res.status(200).json({ success: true, message: result.message })
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message || "Internal Server Error" })
@@ -97,7 +98,7 @@ const orderController = {
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
       console.error("❌ Error retrieving orders:", error)
-      return res.status(500).json({ success: false, message: "Internal Server Error" })
+      return res.status(500).json({ success: false, message: "Internal Server Error", data: [] })
     }
   },
 

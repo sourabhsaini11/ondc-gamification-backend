@@ -1,7 +1,6 @@
 import { CronJob } from "cron"
-import { aggregatePointsSummary } from "./points.servce"
-import { checkWeeklyWinnerCancellation } from "./points.servce"
-import { checkDailyWinnerCancellation } from "./points.servce"
+import { aggregatePointsSummary, checkWeeklyWinnerCancellation, checkDailyWinnerCancellation } from "./points.servce"
+// import { aggregateDailyGmvAndPoints } from "./index"
 
 export const aggregatePointsCron = () => {
   new CronJob(
@@ -20,6 +19,23 @@ export const aggregatePointsCron = () => {
     true,
     "Asia/Calcutta",
   ),
+    // new CronJob(
+    //   // "*/1 * * *", // Runs every 10 minutes
+    //   // "*/1 * * * *", // Runs every 10 minutes
+    //   "*/10 * * * * *", // Runs every 30 seconds
+    //   async () => {
+    //     try {
+    //       console.log(`*=== Running aggregateDailyGmvAndPoints Cron Job ===*`)
+    //       await aggregateDailyGmvAndPoints()
+    //       console.log(`*=== aggregateDailyGmvAndPoints Job Completed Successfully ===*`)
+    //     } catch (error) {
+    //       console.error(`*=== Error in aggregateDailyGmvAndPoints Cron Job: ${error} ===*`)
+    //     }
+    //   },
+    //   null,
+    //   true,
+    //   "Asia/Calcutta",
+    // ),
     new CronJob(
       "0 8 * * 1", // Runs every Monday at 8 AM
       async () => {

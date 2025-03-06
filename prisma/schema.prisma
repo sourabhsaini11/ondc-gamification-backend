@@ -35,6 +35,7 @@ model OrderData {
   game_id                String   @default("")
   points                 Float    @default(0.00)
   streak_maintain        Boolean  @default(false)
+  same_day_order_count   Int      @default(1)
   entry_updated          Boolean  @default(false)
   highest_gmv_for_day    Boolean  @default(false)
   highest_orders_for_day Boolean  @default(false)

@@ -204,8 +204,8 @@ WITH first_status AS (
         -- Get the first status for each order_id within the week
         ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
     FROM public."orderData"
-    WHERE timestamp_created >= DATE_TRUNC('week', CURRENT_DATE)
-      AND timestamp_created < DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '7 days'
+    WHERE timestamp_created >= DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)
+      AND timestamp_created < DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP) + INTERVAL '7 days'
 ),
 valid_orders AS (
     SELECT
@@ -223,7 +223,7 @@ SELECT
     SUM(points)::DOUBLE PRECISION AS total_points,
     COUNT(valid_order) AS total_orders,  -- Count only valid orders
     SUM(gmv)::BIGINT AS total_gmv,
-    DATE_TRUNC('week', CURRENT_DATE)::DATE AS leaderboard_week_start
+    DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)::DATE AS leaderboard_week_start
 FROM valid_orders
 WHERE valid_order = 1  -- Only count valid orders
 GROUP BY game_id
@@ -269,62 +269,38 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
 
     if (viewExists) {
       // Check the last recorded month in the existing leaderboard view
-      const lastMonthCheck: any = await prisma.$queryRaw`
-            SELECT DISTINCT leaderboard_month_start FROM monthly_top_leaderboard LIMIT 1;
-          `
-
-      const lastMonthStart = lastMonthCheck.length > 0 ? lastMonthCheck[0].leaderboard_month_start : null
-
-      if (lastMonthStart && lastMonthStart.toISOString().split("T")[0] !== currentMonthStartStr) {
-        console.log(
-          `Month changed from ${lastMonthStart} to ${currentMonthStartStr}. Resetting monthly leaderboard view.`,
-        )
-        await prisma.$executeRawUnsafe(
-          `ALTER VIEW monthly_top_leaderboard RENAME COLUMN leaderboard_month_start TO month;`,
-        )
-      }
+      // const lastMonthCheck: any = await prisma.$queryRaw`
+      //       SELECT DISTINCT leaderboard_month_start FROM monthly_top_leaderboard LIMIT 1;
+      //     `
+      // const lastMonthStart = lastMonthCheck.length > 0 ? lastMonthCheck[0].leaderboard_month_start : null
+      // if (lastMonthStart && lastMonthStart.toISOString().split("T")[0] !== currentMonthStartStr) {
+      //   console.log(
+      //     `Month changed from ${lastMonthStart} to ${currentMonthStartStr}. Resetting monthly leaderboard view.`,
+      //   )
+      //   await prisma.$executeRawUnsafe(`ALTER VIEW monthly_top_leaderboard`)
+      // }
     }
 
     // Create or refresh the monthly leaderboard view
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS monthly_top_leaderboard`)
     const previewResults = await prisma.$executeRawUnsafe(`
-      CREATE OR REPLACE VIEW monthly_top_leaderboard AS
-      WITH all_orders AS (
-          -- Get all orders from the given month
-          SELECT 
-              game_id,
-              order_id,
-              points,
-              gmv,
-              order_status
-          FROM public."orderData"
-          WHERE DATE(timestamp_created) >= '2025-02-01' -- Adjust as needed
-      ),
-      cancelled_orders AS (
-          -- Get order_ids that have at least one cancelled order
-          SELECT DISTINCT order_id
-          FROM all_orders 
-          WHERE order_status = 'cancelled'
-      ),
-      valid_orders AS (
-          -- Exclude fully cancelled orders
-          SELECT 
-              game_id,
-              order_id
-          FROM all_orders
-          WHERE order_id NOT IN (SELECT order_id FROM cancelled_orders)
-      )
-      SELECT 
-          a.game_id,
-          COUNT(DISTINCT v.order_id) AS total_orders,  -- Count only valid orders
-          SUM(a.points) AS total_points,  -- Sum all points
-          SUM(a.gmv) AS total_gmv  -- Sum all GMV
-      FROM all_orders a
-      LEFT JOIN valid_orders v ON a.order_id = v.order_id
-      GROUP BY a.game_id;
+        CREATE OR REPLACE VIEW monthly_top_leaderboard AS
+        SELECT
+            game_id,
+            SUM(points)::DOUBLE PRECISION AS total_points,  -- Ensure total_points is FLOAT
+            COUNT(order_id)::BIGINT AS total_orders,  -- Ensure total_orders remains BIGINT
+            SUM(gmv)::BIGINT AS total_gmv,  -- Ensure total_gmv is BIGINT
+            '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
+
+        FROM public."orderData"
+        WHERE DATE(timestamp_created) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
+        GROUP BY game_id
+        ORDER BY total_points DESC;
     `)
 
-    //   const previewResults = await prisma.$executeRawUnsafe(`
+    //
+
+    // const previewResults = await prisma.$executeRawUnsafe(`
     //     CREATE OR REPLACE VIEW monthly_top_leaderboard AS
     // WITH first_status AS (
     //     SELECT
@@ -364,6 +340,8 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
     // HAVING SUM(v.points) >= 0  -- Exclude users with negative points
     // ORDER BY total_points DESC;
     // `)
+
+    //
 
     //     const previewResults = await prisma.$executeRawUnsafe(`
     //         CREATE OR REPLACE VIEW monthly_top_leaderboard AS
@@ -531,42 +509,49 @@ export const leaderboardTrigger = async () => {
 
     // Create or replace the leaderboard update function
     let res = await prisma.$executeRawUnsafe(`
-          CREATE OR REPLACE FUNCTION update_leaderboard()
-          RETURNS TRIGGER AS $$
-          BEGIN
-              INSERT INTO leaderboard (game_id, total_points, total_orders, total_gmv)
-              VALUES (
-                  NEW.game_id, 
-                  (SELECT SUM(points) FROM "orderData" WHERE game_id = NEW.game_id),
-                  (SELECT COUNT(order_id) FROM "orderData" WHERE game_id = NEW.game_id),
-                  (SELECT SUM(gmv) FROM "orderData" WHERE game_id = NEW.game_id)
-              )
-              ON CONFLICT (game_id) 
-              DO UPDATE SET 
-                  total_points = EXCLUDED.total_points,
-                  total_orders = EXCLUDED.total_orders,
-                  total_gmv = EXCLUDED.total_gmv;
-    
-              RETURN NEW;
-          END;
-          $$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION update_leaderboard_manual()
+  RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO leaderboard (game_id, total_points, total_orders, total_gmv)
+    SELECT
+        game_id,
+        SUM(points),
+        COUNT(order_id),
+        SUM(gmv)
+    FROM "orderData"
+    GROUP BY game_id
+    ON CONFLICT (game_id) 
+    DO UPDATE SET 
+        total_points = EXCLUDED.total_points,
+        total_orders = EXCLUDED.total_orders,
+        total_gmv = EXCLUDED.total_gmv;
+END;
+$$ LANGUAGE plpgsql;
         `)
+
+    // await prisma.$executeRawUnsafe(`
+    //       INSERT INTO "orderData" (game_id, points, gmv, order_status, timestamp_created)
+    //       VALUES (123, 50, 1000, 'created', NOW());
+    //     `)
 
     console.log("✅ Leaderboard update function created.", res)
 
     // Remove existing trigger if it exists
-    await prisma.$executeRawUnsafe(`
-        DROP TRIGGER IF EXISTS trigger_update_leaderboard ON "orderData";
-      `)
+    // await prisma.$executeRawUnsafe(`
+    //     DROP TRIGGER IF EXISTS update_leaderboard_trigger ON "orderData";
+    //   `)
 
     console.log("🔄 Old leaderboard trigger removed (if it existed).")
 
     // Create the new trigger
     await prisma.$executeRawUnsafe(`
-        CREATE TRIGGER trigger_update_leaderboard
-        AFTER INSERT OR UPDATE OR DELETE ON "orderData"
-        FOR EACH ROW
-        EXECUTE FUNCTION update_leaderboard();
+CREATE OR REPLACE FUNCTION update_leaderboard_trigger()
+RETURNS TRIGGER AS $$
+BEGIN
+    PERFORM update_leaderboard_manual();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
       `)
 
     console.log("✅ New leaderboard trigger created successfully.")
