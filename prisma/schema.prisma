@@ -54,3 +54,13 @@ model Leaderboard {
 
   @@map("leaderboard")
 }
+model RewardLedger {
+id           Int    @id @default(autoincrement())
+order_id     String   @default("") 
+game_id      String   @default("")
+updated_at  DateTime @default(now())
+points      Decimal    @default(0.00)
+reason      String     @default("")
+
+@@map("rewardledger")
+}

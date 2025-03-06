@@ -1,5 +1,8 @@
 import { CronJob } from "cron"
-import { aggregatePointsSummary, checkWeeklyWinnerCancellation, checkDailyWinnerCancellation } from "./points.servce"
+import {
+  aggregatePointsSummary,
+  // , checkWeeklyWinnerCancellation, checkDailyWinnerCancellation
+} from "./points.servce"
 // import { aggregateDailyGmvAndPoints } from "./index"
 
 export const aggregatePointsCron = () => {
@@ -41,7 +44,7 @@ export const aggregatePointsCron = () => {
       async () => {
         try {
           console.log(`*=== Running Weekly Winner Cancellation Cron Job ===*`)
-          await checkWeeklyWinnerCancellation()
+          // await checkWeeklyWinnerCancellation()
           console.log(`*=== Weekly Winner Cancellation Check Completed ===*`)
         } catch (error) {
           console.error(`*=== Error in Weekly Winner Cancellation Cron Job: ${error} ===*`)
@@ -56,7 +59,7 @@ export const aggregatePointsCron = () => {
       async () => {
         try {
           console.log(`*=== Running Daily Winner Cancellation Cron Job ===*`)
-          await checkDailyWinnerCancellation()
+          // await checkDailyWinnerCancellation()
           console.log(`*=== Daily Winner Cancellation Check Completed ===*`)
         } catch (error) {
           console.error(`*=== Error in Daily Winner Cancellation Cron Job: ${error} ===*`)

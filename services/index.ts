@@ -175,6 +175,8 @@ export const parseAndStoreCsv = async (
             }
           })
 
+          await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" DISABLE TRIGGER rewardledger_trigger;`)
+
           if (newOrders.length > 0) {
             const processedNewOrders = await processNewOrders(newOrders)
             await bulkInsertDataIntoDb(processedNewOrders)
@@ -185,7 +187,9 @@ export const parseAndStoreCsv = async (
             await bulkInsertDataIntoDb(processedCancelOrders)
           }
 
-          await updateHighestGmvAndOrdersForDay()
+          await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" ENABLE TRIGGER rewardledger_trigger;`)
+
+          // await updateHighestGmvAndOrdersForDay()
 
           // console.log("newOrders", newOrders)
           // console.log("cancellations", cancellations)

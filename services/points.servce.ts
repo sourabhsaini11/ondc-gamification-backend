@@ -64,42 +64,44 @@ export const createOrRefreshLeaderboardView = async () => {
 
     // Create the new daily leaderboard view
     const previewResults = await prisma.$executeRawUnsafe(`
-      CREATE VIEW daily_top_leaderboard AS
-      WITH all_orders AS (
-          -- Get all orders within the given date range
-          SELECT 
-              game_id,
-              order_id,
-              points,
-              gmv,
-              order_status
-          FROM public."orderData"
-          WHERE timestamp_created >= DATE_TRUNC('day', '${todayDate}'::TIMESTAMP)
-                AND timestamp_created < DATE_TRUNC('day', '${todayDate}'::TIMESTAMP) + INTERVAL '1 day'
-      ),
-      cancelled_orders AS (
-          -- Get order_ids that have at least one cancelled or partially_cancelled order
-          SELECT DISTINCT order_id
-          FROM all_orders
-          WHERE order_status IN ('cancelled', 'partially_cancelled')
-      ),
-      valid_orders AS (
-          -- Exclude orders that are in the cancelled_orders list
-          SELECT 
-              game_id,
-              order_id
-          FROM all_orders
-          WHERE order_id NOT IN (SELECT order_id FROM cancelled_orders)
-      )
-      SELECT 
-          a.game_id,
-          SUM(a.points) AS total_points,  -- Summing all points (including cancelled orders)
-          SUM(a.gmv) AS total_gmv,        -- Summing all GMV (including cancelled orders)
-          COUNT(v.order_id) AS total_orders  -- Only counting valid orders (excluding cancelled)
-      FROM all_orders a
-      LEFT JOIN valid_orders v ON a.order_id = v.order_id
-      GROUP BY a.game_id;
-      
+      CREATE OR REPLACE VIEW daily_top_leaderboard AS
+WITH all_orders AS (
+    -- Get all orders from the current day
+    SELECT 
+        game_id,
+        order_id,
+        points,
+        gmv,
+        order_status,
+        timestamp_created
+    FROM public."orderData"
+    WHERE timestamp_created >= DATE_TRUNC('day', CURRENT_DATE::TIMESTAMP)
+      AND timestamp_created < DATE_TRUNC('day', CURRENT_DATE::TIMESTAMP) + INTERVAL '1 day'
+),
+created_orders AS (
+    -- Get orders where order_status is 'created'
+    SELECT order_id, game_id, points, gmv
+    FROM all_orders
+    WHERE order_status = 'created'
+),
+cancelled_orders AS (
+    -- Get orders where order_status is 'cancelled'
+    SELECT order_id, game_id
+    FROM all_orders
+    WHERE order_status = 'cancelled'
+)
+SELECT 
+    co.game_id,
+    -- Calculate total orders as created orders minus cancelled orders
+    COUNT(DISTINCT co.order_id) - COUNT(DISTINCT ca.order_id) AS total_orders,  
+    SUM(co.points)::DOUBLE PRECISION AS total_points,  
+    SUM(co.gmv)::BIGINT AS total_gmv,
+    DATE_TRUNC('day', CURRENT_DATE)::DATE AS leaderboard_day_start
+FROM created_orders co
+LEFT JOIN cancelled_orders ca ON co.order_id = ca.order_id
+GROUP BY co.game_id
+HAVING SUM(co.points) >= 0  -- Exclude users with negative points
+ORDER BY total_points DESC;
           `)
     //     const previewResults = await prisma.$executeRawUnsafe(`
     //  CREATE OR REPLACE VIEW daily_top_leaderboard AS
@@ -193,30 +195,30 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
     // Create or refresh the weekly leaderboard view
     const previewResults = await prisma.$executeRawUnsafe(`
      CREATE OR REPLACE VIEW weekly_top_leaderboard AS
-WITH first_status AS (
+WITH all_orders AS (
+    -- Get all orders from the current week
     SELECT 
         game_id,
         order_id,
         points,
         gmv,
         order_status,
-        timestamp_created,
-        -- Get the first status for each order_id within the week
-        ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
+        timestamp_created
     FROM public."orderData"
     WHERE timestamp_created >= DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)
       AND timestamp_created < DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP) + INTERVAL '7 days'
 ),
-valid_orders AS (
-    SELECT
-        game_id,
-        order_id,
-        points,
-        gmv,
-        order_status,
-        -- Only include orders where the first status is 'created'
-        CASE WHEN rn = 1 AND order_status = 'created' THEN 1 ELSE 0 END AS valid_order
-    FROM first_status
+created_orders AS (
+    -- Get orders where order_status is 'created'
+    SELECT order_id, game_id, points, gmv
+    FROM all_orders
+    WHERE order_status = 'created'
+),
+cancelled_orders AS (
+    -- Get orders where order_status is 'cancelled'
+    SELECT order_id, game_id
+    FROM all_orders
+    WHERE order_status = 'cancelled'
 )
 SELECT 
     game_id,
@@ -268,6 +270,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
     console.log("viewExists:", viewExists)
 
     if (viewExists) {
+      console.log("TREU")
       // Check the last recorded month in the existing leaderboard view
       // const lastMonthCheck: any = await prisma.$queryRaw`
       //       SELECT DISTINCT leaderboard_month_start FROM monthly_top_leaderboard LIMIT 1;
@@ -559,6 +562,344 @@ $$ LANGUAGE plpgsql;
     console.error("❌ Error setting up leaderboard trigger:", error)
   }
 }
+
+export const rewardLedgerTrigger = async () => {
+  try {
+    console.log("🔄 Setting up rewardledger trigger...")
+
+    // Drop existing functions and triggers
+    await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS update_leaderboard_manual CASCADE;`)
+    await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS rewardledger_function CASCADE;`)
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS rewardledger_trigger ON "orderData";`)
+
+    // Create or replace the function
+    await prisma.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION rewardledger_function()
+      RETURNS TRIGGER AS $$
+      DECLARE
+          order_count INT;
+          streak_days INT;
+          streak_bonus INT;
+          order_points DECIMAL;
+          streakBonuses JSONB;
+          current_game_id TEXT;
+          current_order_count INT;
+          last_order_date DATE;
+          is_cancelled BOOLEAN;
+          highest_order_user TEXT;
+          highest_gmv_user TEXT;
+          previous_highest_order_user TEXT;
+          previous_highest_gmv_user TEXT;
+          order_data RECORD;
+      BEGIN
+          streakBonuses := '{"3": 20, "7": 30, "10": 100, "14": 200, "21": 500, "28": 700}';
+
+          current_game_id := NEW.game_id;
+          is_cancelled := NEW.order_status = 'cancelled';
+
+          -- Lock relevant rows to prevent concurrent updates
+        SELECT order_count INTO current_order_count
+        FROM (SELECT COUNT(*) AS order_count
+              FROM "orderData"
+              WHERE game_id = current_game_id
+                AND DATE(timestamp_created) = DATE(NEW.timestamp_created)
+                AND order_status != 'cancelled') AS subquery;
+
+
+          order_points := current_order_count * 5;
+
+          IF is_cancelled THEN
+              -- Deduct points for the cancelled order
+              INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+              VALUES (NEW.order_id, current_game_id, -5 * current_order_count, 'Order cancelled - points deducted', NOW());
+
+              -- Recalculate points for all remaining orders on the same day
+              FOR order_data IN
+                  SELECT order_id FROM "orderData"
+                  WHERE game_id = current_game_id
+                    AND DATE(timestamp_created) = DATE(NEW.timestamp_created)
+                    AND order_status != 'cancelled'
+              LOOP
+                  order_points := (
+                      SELECT COUNT(*) FROM "orderData"
+                      WHERE game_id = current_game_id
+                        AND DATE(timestamp_created) = DATE(NEW.timestamp_created)
+                        AND order_status != 'cancelled'
+                        AND order_id <= order_data.order_id
+                  ) * 5;
+
+                  UPDATE rewardledger
+                  SET points = order_points
+                  WHERE order_id = order_data.order_id;
+              END LOOP;
+          ELSE
+              INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+              VALUES (NEW.order_id, current_game_id, order_points, 'Order placed - points assigned based on order count', NOW());
+          END IF;
+
+          -- Streak bonus calculations
+          SELECT MAX(DATE(timestamp_created))
+          INTO last_order_date
+          FROM "orderData"
+          WHERE game_id = current_game_id
+            AND order_status != 'cancelled'
+            AND DATE(timestamp_created) < DATE(NEW.timestamp_created);
+
+          IF last_order_date IS NOT NULL AND last_order_date = DATE(NEW.timestamp_created) - INTERVAL '1 day' THEN
+              streak_days := (SELECT COALESCE(MAX(streak_days), 0) + 1
+                             FROM rewardledger
+                             WHERE game_id = current_game_id
+                               AND reason LIKE 'Streak bonus%'
+                               AND updated_at >= CURRENT_DATE - INTERVAL '28 days');
+          ELSE
+              streak_days := 1;
+          END IF;
+
+          IF streak_days >= 3 THEN
+              IF streak_days >= 28 THEN
+                  streak_bonus := (streakBonuses ->> '28')::INT;
+              ELSIF streak_days >= 21 THEN
+                  streak_bonus := (streakBonuses ->> '21')::INT;
+              ELSIF streak_days >= 14 THEN
+                  streak_bonus := (streakBonuses ->> '14')::INT;
+              ELSIF streak_days >= 10 THEN
+                  streak_bonus := (streakBonuses ->> '10')::INT;
+              ELSIF streak_days >= 7 THEN
+                  streak_bonus := (streakBonuses ->> '7')::INT;
+              ELSIF streak_days >= 3 THEN
+                  streak_bonus := (streakBonuses ->> '3')::INT;
+              END IF;
+
+              INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+              VALUES (NEW.order_id, current_game_id, streak_bonus, 'Streak bonus - consecutive days', NOW());
+          END IF;
+
+          RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `)
+
+    console.log("✅ RewardLedger trigger function created successfully!")
+
+    // Remove old rewardledger trigger if it exists
+    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trigger_reward_ledger ON "orderData";`)
+    console.log("🔄 Old rewardledger trigger removed (if it existed).")
+
+    // Create the new rewardledger trigger
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER rewardledger_trigger
+      BEFORE INSERT OR UPDATE OR DELETE ON "orderData"
+      FOR EACH ROW
+      EXECUTE FUNCTION rewardledger_function();
+    `)
+
+    console.log("✅ New rewardledger trigger created successfully.")
+  } catch (error) {
+    console.error("❌ Error setting up rewardledger trigger:", error)
+  }
+}
+
+// export const rewardLedgerTrigger = async () => {
+//   try {
+//     console.log("🔄 Setting up rewardledger trigger...")
+//     await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS update_leaderboard_manual CASCADE;`)
+//     await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS rewardledger_function CASCADE;`)
+//     await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS rewardledger_trigger ON "orderData";`)
+//     // Create or replace the function
+//     const res = await prisma.$executeRawUnsafe(`
+//  CREATE OR REPLACE FUNCTION rewardledger_function()
+// RETURNS TRIGGER AS $$
+// DECLARE
+//     order_count INT;
+//     streak_days INT;
+//     streak_bonus INT;
+//     order_points DECIMAL;
+//     streakBonuses JSONB;
+//     current_game_id TEXT;
+//     current_order_count INT;
+//     last_order_date DATE;
+//     is_cancelled BOOLEAN;
+//     highest_order_user TEXT;
+//     highest_gmv_user TEXT;
+//     previous_highest_order_user TEXT;
+//     previous_highest_gmv_user TEXT;
+//     order_data RECORD;  -- Declare the loop variable as a RECORD
+// BEGIN
+//     -- Streak bonuses map for consecutive days
+//     streakBonuses := '{"3": 20, "7": 30, "10": 100, "14": 200, "21": 500, "28": 700}';
+
+//     -- Get the game_id and order status for the current order
+//     current_game_id := NEW.game_id;
+//     is_cancelled := NEW.order_status = 'cancelled';  -- Only fully cancelled orders deduct points
+
+//     -- Count the number of non-cancelled orders for this game_id on the current day
+//     SELECT COUNT(*)
+//     INTO current_order_count
+//     FROM "orderData"
+//     WHERE game_id = current_game_id
+//       AND DATE(timestamp_created) = DATE(NEW.timestamp_created)
+//       AND order_status != 'cancelled';  -- Exclude fully cancelled orders
+
+//     -- Assign points based on the order number in the day (5 points per order)
+//     order_points := current_order_count * 5;
+
+//     -- If the order is cancelled, recalculate points for all orders on the same day
+//     IF is_cancelled THEN
+//         -- Deduct points for the cancelled order
+//         INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+//         VALUES (NEW.order_id, current_game_id, -5 * current_order_count, 'Order cancelled - points deducted', NOW());
+
+//         -- Recalculate points for all remaining orders on the same day
+//         FOR order_data IN
+//             SELECT order_id
+//             FROM "orderData"
+//             WHERE game_id = current_game_id
+//               AND DATE(timestamp_created) = DATE(NEW.timestamp_created)
+//               AND order_status != 'cancelled'
+//         LOOP
+//             -- Recalculate points for each order
+//             order_points := (SELECT COUNT(*)
+//                             FROM "orderData"
+//                             WHERE game_id = current_game_id
+//                               AND DATE(timestamp_created) = DATE(NEW.timestamp_created)
+//                               AND order_status != 'cancelled'
+//                               AND order_id <= order_data.order_id) * 5;
+
+//             -- Update the rewardledger entry for the order
+//             UPDATE rewardledger
+//             SET points = order_points
+//             WHERE order_id = order_data.order_id;
+//         END LOOP;
+
+//         -- Recalculate the highest number of orders and GMV for the day
+//         WITH order_counts AS (
+//             SELECT game_id, COUNT(*) AS order_count
+//             FROM "orderData"
+//             WHERE DATE(timestamp_created) = DATE(NEW.timestamp_created)
+//               AND order_status != 'cancelled'
+//             GROUP BY game_id
+//         ),
+//         gmv_totals AS (
+//             SELECT game_id, SUM(base_price) AS total_gmv
+//             FROM "orderData"
+//             WHERE DATE(timestamp_created) = DATE(NEW.timestamp_created)
+//               AND order_status != 'cancelled'
+//             GROUP BY game_id
+//         )
+//         SELECT
+//             (SELECT game_id FROM order_counts ORDER BY order_count DESC LIMIT 1),
+//             (SELECT game_id FROM gmv_totals ORDER BY total_gmv DESC LIMIT 1)
+//         INTO highest_order_user, highest_gmv_user;
+
+//         -- Deduct 100 points from the previous highest order user (if any)
+//         SELECT game_id
+//         INTO previous_highest_order_user
+//         FROM rewardledger
+//         WHERE reason = 'Highest number of orders in a day'
+//           AND DATE(updated_at) = DATE(NEW.timestamp_created);
+
+//         IF previous_highest_order_user IS NOT NULL AND previous_highest_order_user != highest_order_user THEN
+//             INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+//             VALUES (NEW.order_id, previous_highest_order_user, -100, 'Lost highest number of orders in a day', NOW());
+//         END IF;
+
+//         -- Award 100 points to the new highest order user
+//         INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+//         VALUES (NEW.order_id, highest_order_user, 100, 'Highest number of orders in a day', NOW());
+
+//         -- Deduct 100 points from the previous highest GMV user (if any)
+//         SELECT game_id
+//         INTO previous_highest_gmv_user
+//         FROM rewardledger
+//         WHERE reason = 'Highest GMV in a day'
+//           AND DATE(updated_at) = DATE(NEW.timestamp_created);
+
+//         IF previous_highest_gmv_user IS NOT NULL AND previous_highest_gmv_user != highest_gmv_user THEN
+//             INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+//             VALUES (NEW.order_id, previous_highest_gmv_user, -100, 'Lost highest GMV in a day', NOW());
+//         END IF;
+
+//         -- Award 100 points to the new highest GMV user
+//         INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+//         VALUES (NEW.order_id, highest_gmv_user, 100, 'Highest GMV in a day', NOW());
+//     ELSE
+//         -- Insert into rewardledger for the current order
+//         INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+//         VALUES (NEW.order_id, current_game_id, order_points, 'Order placed - points assigned based on order count', NOW());
+//     END IF;
+
+//     -- Check streak (3+ consecutive days)
+//     -- Get the last non-cancelled order date for this game_id
+//     SELECT MAX(DATE(timestamp_created))
+//     INTO last_order_date
+//     FROM "orderData"
+//     WHERE game_id = current_game_id
+//       AND order_status != 'cancelled'
+//       AND DATE(timestamp_created) < DATE(NEW.timestamp_created);
+
+//     -- Calculate streak days
+//     -- Calculate streak days
+// IF last_order_date IS NOT NULL AND last_order_date = DATE(NEW.timestamp_created) - INTERVAL '1 day' THEN
+//     -- Increment streak
+//     streak_days := (SELECT COALESCE(MAX(streak_days), 0) + 1
+//                    FROM rewardledger
+//                    WHERE game_id = current_game_id
+//                      AND reason LIKE 'Streak bonus%'
+//                      AND updated_at >= CURRENT_DATE - INTERVAL '28 days');
+// ELSE
+//     -- Reset streak
+//     streak_days := 1;
+// END IF;
+
+//     RAISE NOTICE 'Streak days: %', streak_days;
+
+//     -- If a streak is maintained, give bonus points based on the streak
+//     IF streak_days >= 3 THEN
+//         -- Determine the streak bonus based on consecutive days
+//         IF streak_days >= 28 THEN
+//             streak_bonus := (streakBonuses ->> '28')::INT;
+//         ELSIF streak_days >= 21 THEN
+//             streak_bonus := (streakBonuses ->> '21')::INT;
+//         ELSIF streak_days >= 14 THEN
+//             streak_bonus := (streakBonuses ->> '14')::INT;
+//         ELSIF streak_days >= 10 THEN
+//             streak_bonus := (streakBonuses ->> '10')::INT;
+//         ELSIF streak_days >= 7 THEN
+//             streak_bonus := (streakBonuses ->> '7')::INT;
+//         ELSIF streak_days >= 3 THEN
+//             streak_bonus := (streakBonuses ->> '3')::INT;
+//         END IF;
+
+//         -- Insert streak bonus points into rewardledger
+//         INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+//         VALUES (NEW.order_id, current_game_id, streak_bonus, 'Streak bonus - consecutive days', NOW());
+//     END IF;
+
+//     RETURN NEW;
+// END;
+// $$ LANGUAGE plpgsql;
+//     `)
+
+//     console.log("✅ RewardLedger trigger function created successfully!", res)
+
+//     // Remove old rewardledger trigger if it exists
+//     await prisma.$executeRawUnsafe(`
+//       DROP TRIGGER IF EXISTS trigger_reward_ledger ON "orderData";
+//     `)
+//     console.log("🔄 Old rewardledger trigger removed (if it existed).")
+
+//     // Create the new rewardledger trigger
+//     await prisma.$executeRawUnsafe(`
+//       CREATE TRIGGER rewardledger_trigger
+//       BEFORE INSERT OR UPDATE OR DELETE ON "orderData"
+//       FOR EACH ROW
+//       EXECUTE FUNCTION rewardledger_function();
+//     `)
+//     console.log("✅ New rewardledger trigger created successfully.")
+//   } catch (error) {
+//     console.error("❌ Error setting up rewardledger trigger:", error)
+//   }
+// }
 
 export const checkDailyWinnerCancellation = async () => {
   try {

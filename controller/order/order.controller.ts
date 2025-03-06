@@ -1,5 +1,5 @@
 import { Request, Response } from "express"
-import { parseAndStoreCsv, getUserOrders, getOrders, rewardLedgerTrigger } from "../../services"
+import { parseAndStoreCsv, getUserOrders, getOrders } from "../../services"
 import {
   aggregatePointsSummary,
   createOrRefreshLeaderboardView,
@@ -10,6 +10,7 @@ import {
   getMonthlyLeaderboardData,
   getWeeklyLeaderboardData,
   leaderboardTrigger,
+  rewardLedgerTrigger,
 } from "../../services/points.servce"
 // import { logger } from "../../shared/logger"
 
