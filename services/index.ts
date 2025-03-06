@@ -856,14 +856,14 @@ export const updateHighestGmvAndOrdersForDay = async () => {
           WHERE order_id IN (SELECT order_id FROM filtered_orders)
           GROUP BY game_id, order_date
       )
-      SELECT game_id, order_date, total_orders
+      SELECT game_id, order_date, total_orders,order_id
       FROM aggregated_orders
       ORDER BY total_orders DESC;
     `
     console.log("highestOrdersResults", highestOrdersResults)
 
     // Step 5: Update highest_orders_for_day for the top order count game_id per day
-    for (const { game_id, order_date, total_orders, total_gmv, max_orders, max_gmv } of highestOrdersResults as any[]) {
+    for (const { game_id,order_id, order_date, total_orders, total_gmv, max_orders, max_gmv } of highestOrdersResults as any[]) {
       // If this player has the highest GMV for the day as well, award extra points
       const isHighestGMVUser = highestGmvResults.some(
         (result: any) => result.game_id === game_id && result.timestamp_created === order_date,
@@ -879,6 +879,7 @@ export const updateHighestGmvAndOrdersForDay = async () => {
             },
           },
         })
+        await rewardledgerUpdate(game_id,order_id,-100,"For not maintaing the highest poistion in for highest gmv")
       }
 
       console.log("total_orders", total_orders, total_gmv, max_orders, max_gmv)
@@ -1127,6 +1128,7 @@ const deductStreakPointsForFutureOrders = async (
       if (pointsToDeduct > 0) {
         totalDeducted += pointsToDeduct
         console.log(`Deducted ${pointsToDeduct} points from order ${order.order_id}`)
+        await rewardledgerUpdate(order.order_id, game_id, -pointsToDeduct, "Streak deduction")
       } else {
         console.log(`No points deducted for order ${order.order_id}, but streak count was reduced.`)
       }
@@ -1176,6 +1178,9 @@ const deductPointsForHigherSameDayOrders = async (
     })
 
     console.log("updatedOrders", updatedOrders)
+    if (updatedOrders.count > 0) {
+      await rewardledgerUpdate(orderId, game_id, 5 * updatedOrders.count, "Same-day order penalty")
+    }
 
     console.log(`Updated ${updatedOrders.count} orders by deducting 5 points.`)
   } catch (error) {
