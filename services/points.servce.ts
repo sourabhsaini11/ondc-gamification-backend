@@ -575,108 +575,27 @@ export const rewardLedgerTrigger = async () => {
     // Create or replace the function
     await prisma.$executeRawUnsafe(`
       CREATE OR REPLACE FUNCTION rewardledger_function()
-      RETURNS TRIGGER AS $$
-      DECLARE
-          order_count INT;
-          streak_days INT;
-          streak_bonus INT;
-          order_points DECIMAL;
-          streakBonuses JSONB;
-          current_game_id TEXT;
-          current_order_count INT;
-          last_order_date DATE;
-          is_cancelled BOOLEAN;
-          highest_order_user TEXT;
-          highest_gmv_user TEXT;
-          previous_highest_order_user TEXT;
-          previous_highest_gmv_user TEXT;
-          order_data RECORD;
-      BEGIN
-          streakBonuses := '{"3": 20, "7": 30, "10": 100, "14": 200, "21": 500, "28": 700}';
+RETURNS TRIGGER AS $$
+DECLARE
+    order_count INT;
+BEGIN
+    -- Calculate the order's position in the sequence for the day
+    SELECT COUNT(*) INTO order_count
+    FROM "orderData"
+    WHERE game_id = NEW.game_id
+      AND timestamp_created >= DATE(NEW.timestamp_created)
+      AND timestamp_created < DATE(NEW.timestamp_created) + INTERVAL '1 day'
+      AND order_status = 'created'
+      AND (timestamp_created < NEW.timestamp_created OR 
+          (timestamp_created = NEW.timestamp_created AND order_id <= NEW.order_id));
 
-          current_game_id := NEW.game_id;
-          is_cancelled := NEW.order_status = 'cancelled';
+    -- Insert reward for the new order only
+    INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
+    VALUES (NEW.order_id, NEW.game_id, order_count * 5, 'Daily order', NOW());
 
-          -- Lock relevant rows to prevent concurrent updates
-        SELECT order_count INTO current_order_count
-        FROM (SELECT COUNT(*) AS order_count
-              FROM "orderData"
-              WHERE game_id = current_game_id
-                AND DATE(timestamp_created) = DATE(NEW.timestamp_created)
-                AND order_status != 'cancelled') AS subquery;
-
-
-          order_points := current_order_count * 5;
-
-          IF is_cancelled THEN
-              -- Deduct points for the cancelled order
-              INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
-              VALUES (NEW.order_id, current_game_id, -5 * current_order_count, 'Order cancelled - points deducted', NOW());
-
-              -- Recalculate points for all remaining orders on the same day
-              FOR order_data IN
-                  SELECT order_id FROM "orderData"
-                  WHERE game_id = current_game_id
-                    AND DATE(timestamp_created) = DATE(NEW.timestamp_created)
-                    AND order_status != 'cancelled'
-              LOOP
-                  order_points := (
-                      SELECT COUNT(*) FROM "orderData"
-                      WHERE game_id = current_game_id
-                        AND DATE(timestamp_created) = DATE(NEW.timestamp_created)
-                        AND order_status != 'cancelled'
-                        AND order_id <= order_data.order_id
-                  ) * 5;
-
-                  UPDATE rewardledger
-                  SET points = order_points
-                  WHERE order_id = order_data.order_id;
-              END LOOP;
-          ELSE
-              INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
-              VALUES (NEW.order_id, current_game_id, order_points, 'Order placed - points assigned based on order count', NOW());
-          END IF;
-
-          -- Streak bonus calculations
-          SELECT MAX(DATE(timestamp_created))
-          INTO last_order_date
-          FROM "orderData"
-          WHERE game_id = current_game_id
-            AND order_status != 'cancelled'
-            AND DATE(timestamp_created) < DATE(NEW.timestamp_created);
-
-          IF last_order_date IS NOT NULL AND last_order_date = DATE(NEW.timestamp_created) - INTERVAL '1 day' THEN
-              streak_days := (SELECT COALESCE(MAX(streak_days), 0) + 1
-                             FROM rewardledger
-                             WHERE game_id = current_game_id
-                               AND reason LIKE 'Streak bonus%'
-                               AND updated_at >= CURRENT_DATE - INTERVAL '28 days');
-          ELSE
-              streak_days := 1;
-          END IF;
-
-          IF streak_days >= 3 THEN
-              IF streak_days >= 28 THEN
-                  streak_bonus := (streakBonuses ->> '28')::INT;
-              ELSIF streak_days >= 21 THEN
-                  streak_bonus := (streakBonuses ->> '21')::INT;
-              ELSIF streak_days >= 14 THEN
-                  streak_bonus := (streakBonuses ->> '14')::INT;
-              ELSIF streak_days >= 10 THEN
-                  streak_bonus := (streakBonuses ->> '10')::INT;
-              ELSIF streak_days >= 7 THEN
-                  streak_bonus := (streakBonuses ->> '7')::INT;
-              ELSIF streak_days >= 3 THEN
-                  streak_bonus := (streakBonuses ->> '3')::INT;
-              END IF;
-
-              INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
-              VALUES (NEW.order_id, current_game_id, streak_bonus, 'Streak bonus - consecutive days', NOW());
-          END IF;
-
-          RETURN NEW;
-      END;
-      $$ LANGUAGE plpgsql;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
     `)
 
     console.log("✅ RewardLedger trigger function created successfully!")

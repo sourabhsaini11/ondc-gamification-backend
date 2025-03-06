@@ -526,7 +526,17 @@ const processNewOrders = async (orders: any) => {
           (parseFloat(row.convenience_fee) || 0)
 
         console.log("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
-        const points = await calculatePoints(gmv, uid, streakCount, "newOrder", timestampCreated, 0, row.order_id)
+        const points = await calculatePoints(
+          game_id,
+          gmv,
+          uid,
+          streakCount,
+          "newOrder",
+          timestampCreated,
+          0,
+          row.order_id,
+        )
+        await rewardledgerUpdate(game_id,row.order_id,points,"Points Assigned for the order")
         const orderCount = await getTodayOrderCount2(uid, timestampCreated, row.order_id)
 
         console.log("sec---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
@@ -662,6 +672,7 @@ const processCancellations = async (cancellations: any) => {
         if (orderStatus === "cancelled") {
           newGmv = 0 // Full cancellation resets GMV
           pointsAdjustment = -originalPoints
+          rewardledgerUpdate(gameId, orderId, -`${pointsAdjustment}`, "Points deducted for  Cancellation")
           // if (canceledOrderCount == 0) {
           //   console.log("------->")
           //   pointsAdjustment = -(originalPoints + 200)
@@ -673,8 +684,18 @@ const processCancellations = async (cancellations: any) => {
           await deductStreakPointsForFutureOrders(uid, orderId, timestampCreated, gameId, streak_count)
         } else {
           // Partially cancelled, recalculate points with streak as 0
-          const newPoints = await calculatePoints(newGmv, uid, 0, "partial", timestampCreated, originalGmv, orderId)
+          const newPoints = await calculatePoints(
+            gameId,
+            newGmv,
+            uid,
+            0,
+            "partial",
+            timestampCreated,
+            originalGmv,
+            orderId,
+          )
           pointsAdjustment = newPoints - originalPoints
+          rewardledgerUpdate(gameId, orderId, `-${pointsAdjustment}` as unknown as number, "Points deducted for partial Cancellation")
         }
 
         console.log("first---", timestampCreated, timestampCreated.toISOString())
@@ -906,6 +927,7 @@ export const updateHighestGmvAndOrdersForDay = async () => {
 }
 
 const calculatePoints = async (
+  game_id: string,
   gmv: number,
   uid: string,
   streakCount: number,
@@ -920,11 +942,13 @@ const calculatePoints = async (
 
   points += Math.floor(gmv / 10)
   if (condition === "partial" && originalGmv > 1000 && gmv < 1000) {
+    await rewardledgerUpdate(game_id, orderId, +50.0, "GMV Greater 1000 in partial cancellation ")
     return points + 50
   }
 
   if (gmv > 1000) {
     points += 50
+    await rewardledgerUpdate(game_id, orderId, +50.0, "GMV Greater 1000")
   }
 
   try {
@@ -932,6 +956,7 @@ const calculatePoints = async (
     const orderCount = await getTodayOrderCount2(uid, timestamp, orderId)
     console.log("==========>", orderCount, timestamp)
     points += orderCount * 5
+    await rewardledgerUpdate(game_id, orderId, +orderCount*5, `Points for Repeated Order ${orderCount} in a day` )
   } catch (error) {
     console.error(`Error calculating order count points for ${uid}:`, error)
   }
@@ -953,6 +978,7 @@ const calculatePoints = async (
 
     if (streakBonuses[eligibleBonus]) {
       points += streakBonuses[eligibleBonus]
+      await rewardledgerUpdate(game_id, orderId, +streakBonuses[eligibleBonus], "Points assigned for Streak maintaince ")
     }
   }
 
@@ -1079,6 +1105,7 @@ const deductStreakPointsForFutureOrders = async (
       for (const threshold of streakThresholds) {
         if (order.streak_count >= threshold) {
           pointsToDeduct = streakBonuses[threshold]
+
         } else {
           break
         }
@@ -1558,5 +1585,20 @@ $$ LANGUAGE plpgsql;
     console.log("✅ New rewardledger trigger created successfully.")
   } catch (error) {
     console.error("❌ Error setting up rewardledger trigger:", error)
+  }
+}
+
+const rewardledgerUpdate = async (game_id: string, order_id: string, points: number, reason: string) => {
+  try {
+    await prisma.rewardLedger.create({
+      data: {
+        order_id: order_id,
+        game_id: game_id,
+        points: points,
+        reason: reason,
+      },
+    })
+  } catch (error) {
+    console.log("error", error)
   }
 }
