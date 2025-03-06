@@ -175,7 +175,7 @@ export const parseAndStoreCsv = async (
             }
           })
 
-          await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" DISABLE TRIGGER rewardledger_trigger;`)
+          // await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" DISABLE TRIGGER rewardledger_trigger;`)
 
           if (newOrders.length > 0) {
             const processedNewOrders = await processNewOrders(newOrders)
@@ -187,7 +187,7 @@ export const parseAndStoreCsv = async (
             await bulkInsertDataIntoDb(processedCancelOrders)
           }
 
-          await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" ENABLE TRIGGER rewardledger_trigger;`)
+          // await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" ENABLE TRIGGER rewardledger_trigger;`)
 
           // await updateHighestGmvAndOrdersForDay()
 
@@ -536,7 +536,7 @@ const processNewOrders = async (orders: any) => {
           0,
           row.order_id,
         )
-        await rewardledgerUpdate(game_id,row.order_id,points,"Points Assigned for the order")
+        await rewardledgerUpdate(game_id, row.order_id, points, "Points Assigned for the order")
         const orderCount = await getTodayOrderCount2(uid, timestampCreated, row.order_id)
 
         console.log("sec---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
@@ -695,7 +695,12 @@ const processCancellations = async (cancellations: any) => {
             orderId,
           )
           pointsAdjustment = newPoints - originalPoints
-          rewardledgerUpdate(gameId, orderId, `-${pointsAdjustment}` as unknown as number, "Points deducted for partial Cancellation")
+          rewardledgerUpdate(
+            gameId,
+            orderId,
+            `-${pointsAdjustment}` as unknown as number,
+            "Points deducted for partial Cancellation",
+          )
         }
 
         console.log("first---", timestampCreated, timestampCreated.toISOString())
@@ -863,7 +868,15 @@ export const updateHighestGmvAndOrdersForDay = async () => {
     console.log("highestOrdersResults", highestOrdersResults)
 
     // Step 5: Update highest_orders_for_day for the top order count game_id per day
-    for (const { game_id,order_id, order_date, total_orders, total_gmv, max_orders, max_gmv } of highestOrdersResults as any[]) {
+    for (const {
+      game_id,
+      order_id,
+      order_date,
+      total_orders,
+      total_gmv,
+      max_orders,
+      max_gmv,
+    } of highestOrdersResults as any[]) {
       // If this player has the highest GMV for the day as well, award extra points
       const isHighestGMVUser = highestGmvResults.some(
         (result: any) => result.game_id === game_id && result.timestamp_created === order_date,
@@ -879,7 +892,7 @@ export const updateHighestGmvAndOrdersForDay = async () => {
             },
           },
         })
-        await rewardledgerUpdate(game_id,order_id,-100,"For not maintaing the highest poistion in for highest gmv")
+        await rewardledgerUpdate(game_id, order_id, -100, "For not maintaing the highest poistion in for highest gmv")
       }
 
       console.log("total_orders", total_orders, total_gmv, max_orders, max_gmv)
@@ -957,7 +970,7 @@ const calculatePoints = async (
     const orderCount = await getTodayOrderCount2(uid, timestamp, orderId)
     console.log("==========>", orderCount, timestamp)
     points += orderCount * 5
-    await rewardledgerUpdate(game_id, orderId, +orderCount*5, `Points for Repeated Order ${orderCount} in a day` )
+    await rewardledgerUpdate(game_id, orderId, +orderCount * 5, `Points for Repeated Order ${orderCount} in a day`)
   } catch (error) {
     console.error(`Error calculating order count points for ${uid}:`, error)
   }
@@ -979,7 +992,12 @@ const calculatePoints = async (
 
     if (streakBonuses[eligibleBonus]) {
       points += streakBonuses[eligibleBonus]
-      await rewardledgerUpdate(game_id, orderId, +streakBonuses[eligibleBonus], "Points assigned for Streak maintaince ")
+      await rewardledgerUpdate(
+        game_id,
+        orderId,
+        +streakBonuses[eligibleBonus],
+        "Points assigned for Streak maintaince ",
+      )
     }
   }
 
@@ -1106,7 +1124,6 @@ const deductStreakPointsForFutureOrders = async (
       for (const threshold of streakThresholds) {
         if (order.streak_count >= threshold) {
           pointsToDeduct = streakBonuses[threshold]
-
         } else {
           break
         }
@@ -1446,7 +1463,7 @@ export const getUserOrders = async (userId: number, page: number = 1, limit: num
     const skip = (page - 1) * limit
 
     const orders = await prisma.orderData.findMany({
-      where: { uploaded_by: 1 },
+      where: { uploaded_by: userId },
       orderBy: { timestamp_created: "desc" },
       skip,
       take: limit,
@@ -1454,10 +1471,24 @@ export const getUserOrders = async (userId: number, page: number = 1, limit: num
 
     // Get total count for pagination metadata
     const totalOrders = await prisma.orderData.count({
-      where: { uploaded_by: 1 },
+      where: { uploaded_by: userId },
     })
 
     return { orders, totalOrders }
+  } catch (error) {
+    console.error("Error fetching user orders:", error)
+    throw new Error("Failed to fetch user orders")
+  }
+}
+
+export const getUserOrdersForCSV = async (userId: number) => {
+  try {
+    const orders = await prisma.orderData.findMany({
+      where: { uploaded_by: userId },
+      orderBy: { timestamp_created: "desc" },
+    })
+
+    return { orders }
   } catch (error) {
     console.error("Error fetching user orders:", error)
     throw new Error("Failed to fetch user orders")

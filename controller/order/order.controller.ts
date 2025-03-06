@@ -1,5 +1,5 @@
 import { Request, Response } from "express"
-import { parseAndStoreCsv, getUserOrders, getOrders } from "../../services"
+import { parseAndStoreCsv, getUserOrders, getOrders, getUserOrdersForCSV } from "../../services"
 import {
   aggregatePointsSummary,
   createOrRefreshLeaderboardView,
@@ -9,10 +9,11 @@ import {
   getDailyLeaderboardData,
   getMonthlyLeaderboardData,
   getWeeklyLeaderboardData,
-  leaderboardTrigger,
+  // leaderboardTrigger,
   rewardLedgerTrigger,
 } from "../../services/points.servce"
 // import { logger } from "../../shared/logger"
+import { Parser } from "json2csv"
 
 const orderController = {
   uploadCsv: async (req: any, res: Response): Promise<Response> => {
@@ -28,11 +29,35 @@ const orderController = {
         return res.status(400).json({ success: false, message: result.message })
       }
 
-      leaderboardTrigger()
+      // leaderboardTrigger()
       rewardLedgerTrigger()
       return res.status(200).json({ success: true, message: result.message })
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message || "Internal Server Error" })
+    }
+  },
+
+  downloadCSV: async (req: any, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.userId
+      const { orders } = await getUserOrdersForCSV(userId)
+
+      if (!orders || orders.length === 0) {
+        res.status(404).json({ success: false, message: "No orders found." })
+        return
+      }
+
+      const fields = ["order_id", "name", "category", "buyer_app_id", "base_price", "discount", "order_status", "uid"]
+      const opts = { fields }
+      const parser = new Parser(opts)
+      const csv = parser?.parse(orders)
+
+      res.setHeader("Content-Type", "text/csv")
+      res.setHeader("Content-Disposition", "attachment; filename=orders.csv")
+      res.status(200).send(csv)
+    } catch (error) {
+      console.error("Error generating CSV:", error)
+      res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
 

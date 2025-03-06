@@ -30,6 +30,7 @@
   "homepage": "https://gitlab.com/wil-internal-projects/gamafication-node-backend#readme",
   "dependencies": {
     "@prisma/client": "^6.4.0",
+    "@types/json2csv": "^5.0.7",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
     "blake2": "^5.0.0",
@@ -41,6 +42,7 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "helmet": "^7.1.0",
+    "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.2",
     "moment": "^2.30.1",
     "moment-timezone": "^0.5.47",
