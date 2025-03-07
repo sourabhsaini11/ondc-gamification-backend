@@ -47,7 +47,22 @@ const orderController = {
         return
       }
 
-      const fields = ["order_id", "name", "category", "buyer_app_id", "base_price", "discount", "order_status", "uid"]
+      const fields = [
+        "game_id",
+        "order_id",
+        "name",
+        "domain",
+        "buyer_app_id",
+        "base_price",
+        "shipping_charges",
+        "taxes",
+        "discount",
+        "convenience_fee",
+        "order_status",
+        "points",
+        "timestamp_created",
+        "timestamp_updated",
+      ]
       const opts = { fields }
       const parser = new Parser(opts)
       const csv = parser?.parse(orders)

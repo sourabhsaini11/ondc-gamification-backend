@@ -525,6 +525,8 @@ const processNewOrders = async (orders: any) => {
           (parseFloat(row.taxes) || 0) +
           (parseFloat(row.convenience_fee) || 0)
 
+        rewardledgerUpdate(game_id, row.order_id, gmv, 0, "GMV Points", true, row.timestamp_created)
+
         console.log("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
         const points = await calculatePoints(
           game_id,
@@ -536,7 +538,7 @@ const processNewOrders = async (orders: any) => {
           0,
           row.order_id,
         )
-        await rewardledgerUpdate(game_id, row.order_id, points, "Points Assigned for the order")
+        // await rewardledgerUpdate(game_id, row.order_id, points, "Points Assigned for the order")
         const orderCount = await getTodayOrderCount2(uid, timestampCreated, row.order_id)
 
         console.log("sec---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
@@ -551,13 +553,15 @@ const processNewOrders = async (orders: any) => {
           streakCount,
         )
 
+        console.log("newStreakCount", newStreakCount, streakCount)
+
         processedData.push({
           ...row,
           phone_number,
           game_id,
           points: points,
           entry_updated: true,
-          same_day_order_count: orderCount,
+          same_day_order_count: orderCount + 1,
           streak_maintain: streakMaintain,
           highest_gmv_for_day: false,
           highest_orders_for_day: false,
@@ -670,9 +674,17 @@ const processCancellations = async (cancellations: any) => {
         // Calculate adjustment
         let pointsAdjustment
         if (orderStatus === "cancelled") {
-          newGmv = 0 // Full cancellation resets GMV
+          newGmv = originalGmv // Full cancellation resets GMV
           pointsAdjustment = -originalPoints
-          rewardledgerUpdate(gameId, orderId, -`${pointsAdjustment}`, "Points deducted for  Cancellation")
+          rewardledgerUpdate(
+            gameId,
+            orderId,
+            0,
+            -originalPoints,
+            "Points deducted for Cancellation",
+            false,
+            timestampCreated,
+          )
           // if (canceledOrderCount == 0) {
           //   console.log("------->")
           //   pointsAdjustment = -(originalPoints + 200)
@@ -698,11 +710,15 @@ const processCancellations = async (cancellations: any) => {
           rewardledgerUpdate(
             gameId,
             orderId,
+            0,
             `-${pointsAdjustment}` as unknown as number,
             "Points deducted for partial Cancellation",
+            false,
+            timestampCreated,
           )
         }
 
+        rewardledgerUpdate(gameId, row.order_id, -newGmv, 0, "Adjusted GMV Points", true, timestampCreated)
         console.log("first---", timestampCreated, timestampCreated.toISOString())
 
         streakCancellation(
@@ -878,6 +894,7 @@ export const updateHighestGmvAndOrdersForDay = async () => {
       max_gmv,
     } of highestOrdersResults as any[]) {
       // If this player has the highest GMV for the day as well, award extra points
+      console.log("order_id", order_id)
       const isHighestGMVUser = highestGmvResults.some(
         (result: any) => result.game_id === game_id && result.timestamp_created === order_date,
       )
@@ -892,7 +909,14 @@ export const updateHighestGmvAndOrdersForDay = async () => {
             },
           },
         })
-        await rewardledgerUpdate(game_id, order_id, -100, "For not maintaing the highest poistion in for highest gmv")
+        // await rewardledgerUpdate(
+        //   game_id,
+        //   order_id,
+        //   0,
+        //   -100,
+        //   "For not maintaing the highest poistion in for highest gmv",
+        //   false,
+        // )
       }
 
       console.log("total_orders", total_orders, total_gmv, max_orders, max_gmv)
@@ -953,16 +977,41 @@ const calculatePoints = async (
   gmv = Math.max(0, parseFloat(gmv.toString()))
 
   let points = 10
+  const gmvPoints = Math.floor(gmv / 10)
+  points += gmvPoints
+  if (condition === "partial") {
+    // await rewardledgerUpdate(game_id, orderId, 0, -10.0, "base Points deducted for part cancel ", true)
+    await rewardledgerUpdate(
+      game_id,
+      orderId,
+      0,
+      -Math.floor(gmv / 10),
+      " Points deducted for part cancel ",
+      true,
+      timestamp,
+    )
+    if (originalGmv > 1000 && gmv < 1000) {
+      await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV Greater 1000 in partial cancellation ", true, timestamp)
+      return points + 50
+    }
 
-  points += Math.floor(gmv / 10)
-  if (condition === "partial" && originalGmv > 1000 && gmv < 1000) {
-    await rewardledgerUpdate(game_id, orderId, +50.0, "GMV Greater 1000 in partial cancellation ")
-    return points + 50
+    return points
+  } else {
+    await rewardledgerUpdate(game_id, orderId, 0, +10.0, "base Points awarded for the order ", true, timestamp)
+    await rewardledgerUpdate(
+      game_id,
+      orderId,
+      0,
+      +Math.floor(gmv / 10),
+      " Points awarded for the order ",
+      true,
+      timestamp,
+    )
   }
 
   if (gmv > 1000) {
     points += 50
-    await rewardledgerUpdate(game_id, orderId, +50.0, "GMV Greater 1000")
+    await rewardledgerUpdate(game_id, orderId, 0, +50.0, "GMV Greater 1000", true, timestamp)
   }
 
   try {
@@ -970,7 +1019,17 @@ const calculatePoints = async (
     const orderCount = await getTodayOrderCount2(uid, timestamp, orderId)
     console.log("==========>", orderCount, timestamp)
     points += orderCount * 5
-    await rewardledgerUpdate(game_id, orderId, +orderCount * 5, `Points for Repeated Order ${orderCount} in a day`)
+    // if (orderCount > 1) {
+    await rewardledgerUpdate(
+      game_id,
+      orderId,
+      0,
+      +orderCount * 5,
+      `Points for Repeated Order ${orderCount} in a day`,
+      true,
+      timestamp,
+    )
+    // }
   } catch (error) {
     console.error(`Error calculating order count points for ${uid}:`, error)
   }
@@ -990,13 +1049,18 @@ const calculatePoints = async (
         .filter((key) => key <= streakCount),
     )
 
-    if (streakBonuses[eligibleBonus]) {
-      points += streakBonuses[eligibleBonus]
+    console.log("eligibleBonus", eligibleBonus, streakBonuses[streakCount + 1])
+
+    if (streakBonuses[streakCount + 1]) {
+      points += streakBonuses[streakCount + 1]
       await rewardledgerUpdate(
         game_id,
         orderId,
-        +streakBonuses[eligibleBonus],
+        0,
+        +streakBonuses[streakCount + 1],
         "Points assigned for Streak maintaince ",
+        true,
+        timestamp,
       )
     }
   }
@@ -1022,18 +1086,13 @@ const deductStreakPointsForFutureOrders = async (
 
     // Streak bonus map
     const streakBonuses: Record<number, number> = {
-      4: 20,
-      8: 30,
-      11: 100,
-      15: 200,
-      22: 500,
-      29: 700,
+      3: 20,
+      7: 30,
+      10: 100,
+      14: 200,
+      21: 500,
+      28: 700,
     }
-
-    // Extract streak thresholds sorted in ascending order
-    const streakThresholds = Object.keys(streakBonuses)
-      .map(Number)
-      .sort((a, b) => a - b)
 
     const canceledOrders = await prisma.orderData.findMany({
       where: {
@@ -1059,33 +1118,27 @@ const deductStreakPointsForFutureOrders = async (
     console.log("sameDayOrders", sameDayOrders)
 
     // Deduct points for the current order based on its streak count
-    let currentOrderPointsToDeduct = 0
-    for (const threshold of streakThresholds) {
-      if (streak_count >= threshold) {
-        currentOrderPointsToDeduct = streakBonuses[threshold]
-      } else {
-        break
-      }
-    }
+    // let currentOrderPointsToDeduct = 0
+    // currentOrderPointsToDeduct = currentOrderPointsToDeduct + streakBonuses[streak_count]
 
-    const currentOrder: any = await prisma.orderData.findFirst({
-      where: { order_id: orderId, uid: uid, game_id: game_id },
-      select: { id: true },
-    })
+    // const currentOrder: any = await prisma.orderData.findFirst({
+    //   where: { order_id: orderId, uid: uid, game_id: game_id },
+    //   select: { id: true },
+    // })
 
-    const updatedCurrentStreak = Math.max(streak_count - 1, 1)
+    // const updatedCurrentStreak = Math.max(streak_count - 1, 1)
 
-    await prisma.orderData.update({
-      where: { id: currentOrder.id },
-      data: {
-        points: currentOrderPointsToDeduct > 0 ? { decrement: currentOrderPointsToDeduct } : undefined,
-        streak_count: 0,
-        updated_by_lambda: new Date().toISOString(),
-      },
-    })
-    console.log(
-      `Deducted ${currentOrderPointsToDeduct} points from current order ${orderId}, streak updated to ${updatedCurrentStreak}`,
-    )
+    // await prisma.orderData.update({
+    //   where: { id: currentOrder.id },
+    //   data: {
+    //     points: currentOrderPointsToDeduct > 0 ? { decrement: currentOrderPointsToDeduct } : undefined,
+    //     streak_count: 0,
+    //     updated_by_lambda: new Date().toISOString(),
+    //   },
+    // })
+    // console.log(
+    //   `Deducted ${currentOrderPointsToDeduct} points from current order ${orderId}, streak updated to ${updatedCurrentStreak}`,
+    // )
 
     // If other orders exist on the same day, we skip deductions for future orders
     if (sameDayOrders.length > 0) {
@@ -1121,13 +1174,7 @@ const deductStreakPointsForFutureOrders = async (
       }
 
       let pointsToDeduct = 0
-      for (const threshold of streakThresholds) {
-        if (order.streak_count >= threshold) {
-          pointsToDeduct = streakBonuses[threshold]
-        } else {
-          break
-        }
-      }
+      pointsToDeduct = pointsToDeduct + streakBonuses[order.streak_count]
 
       const updatedStreak = Math.max(order.streak_count - streak_count, 1)
       console.log("updatedStreak", order.streak_count, updatedStreak)
@@ -1145,7 +1192,15 @@ const deductStreakPointsForFutureOrders = async (
       if (pointsToDeduct > 0) {
         totalDeducted += pointsToDeduct
         console.log(`Deducted ${pointsToDeduct} points from order ${order.order_id}`)
-        await rewardledgerUpdate(order.order_id, game_id, -pointsToDeduct, "Streak deduction")
+        await rewardledgerUpdate(
+          game_id,
+          order.order_id,
+          0,
+          -pointsToDeduct,
+          "Streak deduction",
+          false,
+          order.timestamp_created,
+        )
       } else {
         console.log(`No points deducted for order ${order.order_id}, but streak count was reduced.`)
       }
@@ -1171,6 +1226,25 @@ const deductPointsForHigherSameDayOrders = async (
     const endOfDay = new Date(timestamp_created)
     endOfDay.setHours(23, 59, 59, 999)
 
+    const allOrders = await prisma.orderData.findMany({
+      where: {
+        uid: uid, // Same user
+        game_id: game_id, // Same game
+        timestamp_created: {
+          gte: startOfDay,
+          lt: endOfDay,
+        },
+        same_day_order_count: {
+          gt: same_day_order_count,
+        },
+        NOT: {
+          order_id: orderId,
+        },
+      },
+    })
+
+    console.log("updatedOrders2", allOrders)
+
     const updatedOrders = await prisma.orderData.updateMany({
       where: {
         uid: uid, // Same user
@@ -1194,9 +1268,13 @@ const deductPointsForHigherSameDayOrders = async (
       },
     })
 
-    console.log("updatedOrders", updatedOrders)
+    console.log("updatedOrders", updatedOrders, allOrders)
     if (updatedOrders.count > 0) {
-      await rewardledgerUpdate(orderId, game_id, 5 * updatedOrders.count, "Same-day order penalty")
+      await Promise.all(
+        allOrders.map((order: any) =>
+          rewardledgerUpdate(game_id, order.order_id, 0, -5, "Same-day order penalty", false, order.timestamp_created),
+        ),
+      )
     }
 
     console.log(`Updated ${updatedOrders.count} orders by deducting 5 points.`)
@@ -1213,6 +1291,30 @@ const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string
 
     const endOfDay = new Date(timestamp)
     endOfDay.setHours(23, 59, 59, 999)
+
+    // Get all order_id values that have at least one "cancelled" order
+    const cancelledOrders = await prisma.orderData.findMany({
+      where: {
+        uid: uid,
+        timestamp_created: {
+          gte: startOfDay,
+          lt: endOfDay,
+        },
+        order_status: "cancelled",
+      },
+      select: {
+        order_id: true,
+      },
+    })
+
+    const cancelledOrderIds = cancelledOrders.map((order) => order.order_id)
+
+    // Add the provided order_id to the exclusion list
+    if (order_id) {
+      cancelledOrderIds.push(order_id)
+    }
+
+    // Count orders, excluding those with a "cancelled" order_id and the given order_id
     const totalOrdersToday = await prisma.orderData.count({
       where: {
         uid: uid,
@@ -1221,23 +1323,10 @@ const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string
           lt: endOfDay,
         },
         NOT: {
-          order_id,
+          order_id: { in: cancelledOrderIds },
         },
       },
     })
-    console.log("timestamp2", timestamp)
-
-    // const totalOrders = await prisma.orderData.findMany({
-    //   where: {
-    //     uid: uid,
-    //     timestamp_created: {
-    //       gte: new Date(timestamp.setHours(0, 0, 0, 0)),
-    //       lt: new Date(timestamp.setHours(23, 59, 59, 999)),
-    //     },
-    //   },
-    // })
-
-    // console.log("totalOrders", totalOrders)
 
     return totalOrdersToday
   } catch (error) {
@@ -1624,13 +1713,25 @@ $$ LANGUAGE plpgsql;
   }
 }
 
-const rewardledgerUpdate = async (game_id: string, order_id: string, points: number, reason: string) => {
+const rewardledgerUpdate = async (
+  game_id: string,
+  order_id: string,
+  gmv: number,
+  points: number,
+  reason: string,
+  positive: boolean,
+  created_at: any,
+) => {
   try {
+    console.log("pointssssssssssss", points, -points)
     await prisma.rewardLedger.create({
       data: {
         order_id: order_id,
         game_id: game_id,
-        points: points,
+        created_at,
+
+        gmv: gmv,
+        points: positive ? points : points,
         reason: reason,
       },
     })
