@@ -58,9 +58,20 @@ model RewardLedger {
 id           Int    @id @default(autoincrement())
 order_id     String   @default("") 
 game_id      String   @default("")
+created_at  DateTime  @default(now())
 updated_at  DateTime @default(now())
 points      Decimal    @default(0.00)
 reason      String     @default("")
 
 @@map("rewardledger")
 }
+
+model DailyWinner {
+  id           Int      @id @default(autoincrement())
+  game_id      String      
+  points       Int
+  winning_date DateTime @default(now())
+
+  @@map("dailywinner")
+}
+
