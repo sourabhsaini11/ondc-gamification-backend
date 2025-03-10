@@ -719,39 +719,23 @@ export const getLeaderboardByDate = async (date: string) => {
     const startDate = new Date(date).toISOString().split("T")[0];
 
     const leaderboard = await prisma.$queryRaw`
-      WITH first_status AS (
-          SELECT 
-              game_id,
-              order_id,
-              points,
-              gmv,
-              order_status,
-              timestamp_created,
-              ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
+      WITH valid_orders AS (
+          SELECT order_id
           FROM public."orderData"
-          WHERE timestamp_created >= ${startDate}::DATE
-            AND timestamp_created < (${startDate}::DATE + INTERVAL '1 day')
-      ),
-      valid_orders AS (
-          SELECT
-              game_id,
-              order_id,
-              points,
-              gmv,
-              order_status,
-              CASE WHEN rn = 1 AND order_status = 'created' THEN 1 ELSE 0 END AS valid_order
-          FROM first_status
+          GROUP BY order_id
+          HAVING BOOL_AND(order_status <> 'cancelled')
       )
       SELECT 
-          game_id,
-          SUM(points)::DOUBLE PRECISION AS total_points,
-          COUNT(valid_order) AS total_orders,
-          SUM(gmv)::BIGINT AS total_gmv,
+          o.game_id,
+          COALESCE(SUM(r.points), 0) AS total_points,
+          COUNT(DISTINCT o.order_id)::BIGINT AS total_orders,
+          COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           ${startDate}::DATE AS leaderboard_day_start
-      FROM valid_orders
-      WHERE valid_order = 1
-      GROUP BY game_id
-      HAVING SUM(points) >= 0
+      FROM public."orderData" o
+      LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id
+      WHERE DATE(o.timestamp_created) = ${startDate}::DATE
+        AND o.order_id IN (SELECT order_id FROM valid_orders)
+      GROUP BY o.game_id
       ORDER BY total_points DESC;
     `;
 
@@ -767,53 +751,38 @@ export const getLeaderboardByDate = async (date: string) => {
     };
   }
 };
+
 export const fetchLeaderboardForWeek = async (date: string) => {
   try {
     const startDate = new Date(date);
-    const startOfWeek = new Date(startDate);
-    startOfWeek.setDate(startDate.getDate()); // Start from given date
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 7); // Next 7 days
+    const currentWeekStart = new Date(startDate);
+    currentWeekStart.setDate(startDate.getDate() - startDate.getDay() + (startDate.getDay() === 0 ? -6 : 1)); // Monday of the week
+    const currentWeekStartStr = currentWeekStart.toISOString().split("T")[0]; // YYYY-MM-DD
+    const endDate = new Date(currentWeekStart);
+    endDate.setDate(currentWeekStart.getDate() + 7);
+    const endDateStr = endDate.toISOString().split("T")[0];
 
-    const startDateStr = startOfWeek.toISOString().split("T")[0]; // YYYY-MM-DD
-    const endDateStr = endOfWeek.toISOString().split("T")[0]; // YYYY-MM-DD
-
-    console.log(`Fetching leaderboard from ${startDateStr} to ${endDateStr}`);
+    console.log(`Fetching leaderboard for the week starting: ${currentWeekStartStr}`);
 
     const leaderboard = await prisma.$queryRaw`
-      WITH first_status AS (
-          SELECT 
-              game_id,
-              order_id,
-              points,
-              gmv,
-              order_status,
-              timestamp_created,
-              ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
+      WITH valid_orders AS (
+          SELECT order_id
           FROM public."orderData"
-          WHERE timestamp_created >= ${startDateStr}::DATE
-            AND timestamp_created < ${endDateStr}::DATE
-      ),
-      valid_orders AS (
-          SELECT
-              game_id,
-              order_id,
-              points,
-              gmv,
-              order_status,
-              CASE WHEN rn = 1 AND order_status = 'created' THEN 1 ELSE 0 END AS valid_order
-          FROM first_status
+          GROUP BY order_id
+          HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
       )
-      SELECT 
-          game_id,
-          SUM(points)::DOUBLE PRECISION AS total_points,
-          COUNT(valid_order) AS total_orders,
-          SUM(gmv)::BIGINT AS total_gmv,
-          ${startDateStr}::DATE AS leaderboard_week_start
-      FROM valid_orders
-      WHERE valid_order = 1
-      GROUP BY game_id
-      HAVING SUM(points) >= 0
+      SELECT
+          o.game_id,
+          COALESCE(SUM(r.points), 0) AS total_points,
+          COUNT(DISTINCT o.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+          COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
+          ${currentWeekStartStr}::DATE AS leaderboard_week_start
+      FROM public."orderData" o
+      LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id
+      WHERE DATE(o.timestamp_created) >= ${currentWeekStartStr}::DATE
+        AND DATE(o.timestamp_created) < ${endDateStr}::DATE
+        AND o.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+      GROUP BY o.game_id
       ORDER BY total_points DESC;
     `;
 
