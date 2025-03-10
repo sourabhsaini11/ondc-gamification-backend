@@ -20,11 +20,11 @@ export const parseAndStoreCsv = async (
     timestamp_updated: Date
     domain: any
     buyer_app_id: any
-    base_price: number
-    shipping_charges: number
-    taxes: number
-    discount: number
-    convenience_fee: number
+    total_price: number
+    // shipping_charges: number
+    // taxes: number
+    // discount: number
+    // convenience_fee: number
     uploaded_by: number
   }[] = []
   // const uidFirstOrderTimestamp = new Map()
@@ -44,8 +44,14 @@ export const parseAndStoreCsv = async (
           const normalizedRow = Object.fromEntries(
             Object.entries(row).map(([key, value]) => {
               const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, "_")
+
               if (value == "" || value == undefined || value === null) {
                 check = true
+              }
+
+              if (key == "order_status") {
+                const normalizedValue = key.trim().toLowerCase().replace(/\s+/g, "_")
+                value = normalizedValue
               }
 
               return [normalizedKey, value]
@@ -56,6 +62,8 @@ export const parseAndStoreCsv = async (
             return reject({ success: false, message: `Values can't be empty or invalid at index:${rowCount}` })
           }
 
+          console.log("normalizedRow", normalizedRow)
+
           const requiredFields = [
             "phone_number",
             "name",
@@ -63,12 +71,12 @@ export const parseAndStoreCsv = async (
             "order_status",
             "timestamp_created",
             "domain",
-            "buyer_app_id",
-            "base_price",
-            "shipping_charges",
-            "taxes",
-            "discount",
-            "conveniance_fee",
+            // "buyer_app_id",
+            "total_price",
+            // "shipping_charges",
+            // "taxes",
+            // "discount",
+            // "conveniance_fee",
           ]
 
           const rowKeys = Object.keys(normalizedRow) // Get all keys in row
@@ -94,7 +102,7 @@ export const parseAndStoreCsv = async (
             if (
               existingRecord.orderStatus.toLowerCase() == "created" &&
               String(normalizedRow["order_status"]).toLowerCase() == "created" &&
-              existingRecord.buyerAppId === normalizedRow["buyer_app_id"]
+              existingRecord.buyerAppId === String(userId)
             ) {
               return reject({
                 success: false,
@@ -102,6 +110,8 @@ export const parseAndStoreCsv = async (
               })
             }
           }
+
+          //async IIFE to fetch Userid
 
           const timestampStr: any = normalizedRow["timestamp_created"] // Example: "2025-02-24 2:00:00"
           const timestampCreated: Date = moment
@@ -128,12 +138,12 @@ export const parseAndStoreCsv = async (
             timestamp_created: timestampCreated,
             timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])) || timestampCreated, // timestamp_Updated update
             domain: normalizedRow["domain"],
-            buyer_app_id: normalizedRow["buyer_app_id"],
-            base_price: parseFloat(String(normalizedRow["base_price"])) || 0,
-            shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
-            taxes: parseFloat(String(normalizedRow["taxes"])) || 0,
-            discount: parseFloat(String(normalizedRow["discount"])) || 0,
-            convenience_fee: parseFloat(String(normalizedRow["conveniance_fee"])) || 0,
+            buyer_app_id: String(userId),
+            total_price: parseFloat(String(normalizedRow["total_price"])) || 0,
+            // shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
+            // taxes: parseFloat(String(normalizedRow["taxes"])) || 0,
+            // discount: parseFloat(String(normalizedRow["discount"])) || 0,
+            // convenience_fee: parseFloat(String(normalizedRow["conveniance_fee"])) || 0,
             uploaded_by: userId,
           })
 
@@ -519,13 +529,17 @@ const processNewOrders = async (orders: any) => {
         }
 
         // Calculate GMV
-        const gmv =
-          (parseFloat(row.base_price) || 0) +
-          (parseFloat(row.shipping_charges) || 0) +
-          (parseFloat(row.taxes) || 0) +
-          (parseFloat(row.convenience_fee) || 0)
+        const gmv = parseFloat(row.total_price) || 0
 
-        rewardledgerUpdate(game_id, row.order_id, gmv, 0, "GMV Points", true, row.timestamp_created)
+        rewardledgerUpdate(
+          game_id,
+          row.order_id,
+          gmv,
+          Math.floor(gmv / 10),
+          "GMV & Points",
+          true,
+          row.timestamp_created,
+        )
 
         console.log("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
         const points = await calculatePoints(
@@ -537,6 +551,7 @@ const processNewOrders = async (orders: any) => {
           timestampCreated,
           0,
           row.order_id,
+          // row.order_status,
         )
         // await rewardledgerUpdate(game_id, row.order_id, points, "Points Assigned for the order")
         const orderCount = await getTodayOrderCount2(uid, timestampCreated, row.order_id)
@@ -662,14 +677,14 @@ const processCancellations = async (cancellations: any) => {
           return isNaN(num) ? defaultValue : Math.abs(num)
         }
 
-        const basePrice = safeFloat(row.base_price, 0)
-        const shippingCharges = safeFloat(row.shipping_charges, 0)
-        const taxes = safeFloat(row.taxes, 0)
-        const convenienceFee = safeFloat(row.convenience_fee, 0)
-        const discount = safeFloat(row.discount, 0)
+        // const basePrice = safeFloat(row.base_price, 0)
+        // const shippingCharges = safeFloat(row.shipping_charges, 0)
+        // const taxes = safeFloat(row.taxes, 0)
+        // const convenienceFee = safeFloat(row.convenience_fee, 0)
+        // const discount = safeFloat(row.discount, 0)
 
         // Calculate new GMV
-        let newGmv = basePrice + shippingCharges + taxes + convenienceFee - discount
+        let newGmv = safeFloat(row.total_price, 0)
 
         // Calculate adjustment
         let pointsAdjustment
@@ -679,9 +694,9 @@ const processCancellations = async (cancellations: any) => {
           rewardledgerUpdate(
             gameId,
             orderId,
-            0,
+            -newGmv,
             -originalPoints,
-            "Points deducted for Cancellation",
+            "Cancelled GMV & Points",
             false,
             timestampCreated,
           )
@@ -694,6 +709,47 @@ const processCancellations = async (cancellations: any) => {
 
           await deductPointsForHigherSameDayOrders(uid, orderId, timestampCreated, gameId, same_day_order_count)
           await deductStreakPointsForFutureOrders(uid, orderId, timestampCreated, gameId, streak_count)
+
+          // checking for the change in the leaderboard
+          const Result: any = await prisma.dailyWinner.findFirst({
+            where: {
+              game_id: gameId,
+            },
+          })
+          if (Result) {
+            const topUsers: any = await prisma.rewardLedger.findMany({
+              where: {
+                created_at: Result[0].winningDate,
+              },
+              orderBy: {
+                points: "desc", // Sort by points in descending order to get the top users
+              },
+              take: 2, // Only take the top 2 users
+            })
+            if (topUsers[0].points - pointsAdjustment < topUsers[1].points) {
+              // await rewardledgerUpdate(
+              //   gameId,
+              //   orderId,
+              //   Result[0].winning_date,
+              //   -100,
+              //   "Points deducted for removing from the poisition",
+              // )
+            }
+          }
+          // const Result: any = await prisma.$executeRawUnsafe(`
+          //     Select game_id,points from dailyWinner limit 2
+          //   `)
+          // if (Result[0].game_id == gameId) {
+          //   if (Result[0]?.points + pointsAdjustment < Result[1]?.points) {
+          //     await rewardledgerUpdate(
+          //       Result[0].game_id,
+          //       orderId,
+          //       timestampCreated,
+          //       -100,
+          //       "Points deducted for losing the poisition",
+          //     )
+          //   }
+          // }
         } else {
           // Partially cancelled, recalculate points with streak as 0
           const newPoints = await calculatePoints(
@@ -710,15 +766,23 @@ const processCancellations = async (cancellations: any) => {
           rewardledgerUpdate(
             gameId,
             orderId,
-            0,
+            -newGmv,
             `-${pointsAdjustment}` as unknown as number,
-            "Points deducted for partial Cancellation",
+            "Adjusted GMV & Points",
             false,
             timestampCreated,
           )
         }
 
-        rewardledgerUpdate(gameId, row.order_id, -newGmv, 0, "Adjusted GMV Points", true, timestampCreated)
+        // rewardledgerUpdate(
+        //   gameId,
+        //   row.order_id,
+        //   -newGmv,
+        //   -Math.floor(newGmv / 10),
+        //   "Adjusted GMV & Points",
+        //   true,
+        //   timestampCreated,
+        // )
         console.log("first---", timestampCreated, timestampCreated.toISOString())
 
         streakCancellation(
@@ -736,11 +800,11 @@ const processCancellations = async (cancellations: any) => {
           highest_gmv_for_day: false,
           highest_orders_for_day: false,
           gmv: newGmv,
-          base_price: basePrice,
-          shipping_charges: shippingCharges,
-          taxes: taxes,
-          convenience_fee: convenienceFee,
-          discount: discount,
+          // total_price: row.total_price,
+          // shipping_charges: shippingCharges,
+          // taxes: taxes,
+          // convenience_fee: convenienceFee,
+          // discount: discount,
           updated_by_lambda: new Date().toISOString(),
           timestamp_created: timestampCreated.toISOString(),
           timestamp_updated: new Date().toISOString(),
@@ -877,7 +941,7 @@ export const updateHighestGmvAndOrdersForDay = async () => {
           WHERE order_id IN (SELECT order_id FROM filtered_orders)
           GROUP BY game_id, order_date
       )
-      SELECT game_id, order_date, total_orders,order_id
+      SELECT game_id, order_date, total_orders,order_id,timestamp_created
       FROM aggregated_orders
       ORDER BY total_orders DESC;
     `
@@ -973,6 +1037,7 @@ const calculatePoints = async (
   timestamp: any,
   originalGmv: number,
   orderId: string,
+  // order_status?: string,
 ) => {
   gmv = Math.max(0, parseFloat(gmv.toString()))
 
@@ -981,15 +1046,15 @@ const calculatePoints = async (
   points += gmvPoints
   if (condition === "partial") {
     // await rewardledgerUpdate(game_id, orderId, 0, -10.0, "base Points deducted for part cancel ", true)
-    await rewardledgerUpdate(
-      game_id,
-      orderId,
-      0,
-      -Math.floor(gmv / 10),
-      " Points deducted for part cancel ",
-      true,
-      timestamp,
-    )
+    // await rewardledgerUpdate(
+    //   game_id,
+    //   orderId,
+    //   0,
+    //   -Math.floor(gmv / 10),
+    //   " Points deducted for part cancel ",
+    //   true,
+    //   timestamp,
+    // )
     if (originalGmv > 1000 && gmv < 1000) {
       await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV Greater 1000 in partial cancellation ", true, timestamp)
       return points + 50
@@ -998,15 +1063,15 @@ const calculatePoints = async (
     return points
   } else {
     await rewardledgerUpdate(game_id, orderId, 0, +10.0, "base Points awarded for the order ", true, timestamp)
-    await rewardledgerUpdate(
-      game_id,
-      orderId,
-      0,
-      +Math.floor(gmv / 10),
-      " Points awarded for the order ",
-      true,
-      timestamp,
-    )
+    // await rewardledgerUpdate(
+    //   game_id,
+    //   orderId,
+    //   0,
+    //   +Math.floor(gmv / 10),
+    //   " Points awarded for the order ",
+    //   true,
+    //   timestamp,
+    // )
   }
 
   if (gmv > 1000) {
@@ -1412,6 +1477,8 @@ const processStreak = (lastStreakDate: any, currentTimestamp: any, streakCount: 
     //   return { streakMaintain, newStreakCount, newLastStreakDate }
     // }
 
+    console.log("lastStreakDate", lastStreakDate)
+
     if (lastStreakDate) {
       const lastStreakDay = moment(lastStreakDate).startOf("day")
       const currentDay = moment(currentTimestamp).startOf("day")
@@ -1480,7 +1547,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
   })
 
   // Step 2: Create a Set of {uid, game_id} combinations to filter data
-  const blacklistedUsers = new Set(usersWithExcessiveCancellations.map(({ game_id }) => game_id))
+  const blacklistedUsers = new Set(usersWithExcessiveCancellations.map(({ game_id }: { game_id: string }) => game_id))
 
   // // Step 3: Filter out users from `data` who match the blacklist
   const filteredData = data.filter((item: any) => !blacklistedUsers.has(item.game_id))
@@ -1501,11 +1568,11 @@ const bulkInsertDataIntoDb = async (data: any) => {
       timestamp_updated: row.timestamp_updated,
       domain: row.domain,
       buyer_app_id: row.buyer_app_id,
-      base_price: parseFloat(row.base_price || 0),
-      shipping_charges: parseFloat(row.shipping_charges || 0),
-      taxes: parseFloat(row.taxes || 0),
-      discount: parseFloat(row.discount || 0),
-      convenience_fee: parseFloat(row.convenience_fee || 0),
+      total_price: parseFloat(row.total_price || 0),
+      // shipping_charges: parseFloat(row.shipping_charges || 0),
+      // taxes: parseFloat(row.taxes || 0),
+      // discount: parseFloat(row.discount || 0),
+      // convenience_fee: parseFloat(row.convenience_fee || 0),
       uid: row.uid,
       game_id: row.game_id,
       points: parseFloat(row.points || 0),
@@ -1724,17 +1791,19 @@ const rewardledgerUpdate = async (
 ) => {
   try {
     console.log("pointssssssssssss", points, -points)
-    await prisma.rewardLedger.create({
-      data: {
-        order_id: order_id,
-        game_id: game_id,
-        created_at,
+    if (!(points == 0 && gmv == 0)) {
+      await prisma.rewardLedger.create({
+        data: {
+          order_id: order_id,
+          game_id: game_id,
+          created_at,
 
-        gmv: gmv,
-        points: positive ? points : points,
-        reason: reason,
-      },
-    })
+          gmv: gmv,
+          points: positive ? points : points,
+          reason: reason,
+        },
+      })
+    }
   } catch (error) {
     console.log("error", error)
   }

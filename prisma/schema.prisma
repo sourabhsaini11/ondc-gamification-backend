@@ -24,11 +24,11 @@ model OrderData {
   timestamp_updated      DateTime @default(now())
   domain               String   @default("")
   buyer_app_id           String   @default("")
-  base_price             Float    @default(0.00)
-  shipping_charges       Float    @default(0.00)
-  taxes                  Float    @default(0.00)
-  discount               Float    @default(0.00)
-  convenience_fee        Float    @default(0.00)
+  total_price             Float    @default(0.00)
+  // shipping_charges       Float    @default(0.00)
+  // taxes                  Float    @default(0.00)
+  // discount               Float    @default(0.00)
+  // convenience_fee        Float    @default(0.00)
   streak_count           Int      @default(0)
   last_streak_date       DateTime
   updated_by_lambda      DateTime
@@ -66,3 +66,15 @@ reason      String     @default("")
 
 @@map("rewardledger")
 }
+
+model DailyWinner {
+  id           Int      @id @default(autoincrement())
+  game_id      String      
+  points       Int
+  position       Int
+  type       String
+  winning_date DateTime @default(now())
+
+  @@map("dailywinner")
+}
+

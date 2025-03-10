@@ -1,6 +1,9 @@
 import { CronJob } from "cron"
 import {
   aggregatePointsSummary,
+  DayWinnerUpdate,
+  WeeklyWinnerUpdate,
+  MonthlyWinnerUpdate,
   // , checkWeeklyWinnerCancellation, checkDailyWinnerCancellation
 } from "./points.servce"
 // import { aggregateDailyGmvAndPoints } from "./index"
@@ -69,4 +72,29 @@ export const aggregatePointsCron = () => {
       true,
       "Asia/Calcutta", // Adjust to your time zone
     )
+
+  new CronJob(
+    "0 8 * * *", // Runs every day at 8 AM
+    DayWinnerUpdate,
+    null,
+    true,
+    "Asia/Calcutta",
+  )
+
+  new CronJob(
+    "0 8 * * 0", // Runs every Sunday at 8 AM (end of the week)
+    WeeklyWinnerUpdate,
+    null,
+    true,
+    "Asia/Calcutta",
+  )
+
+  new CronJob(
+    // "*/1 * * * *", // Runs every 10 minutes
+    "0 8 1 * *", // Runs on the first day of each month at 8 AM (storing last month's winners)
+    MonthlyWinnerUpdate,
+    null,
+    true,
+    "Asia/Calcutta",
+  )
 }
