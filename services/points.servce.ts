@@ -714,6 +714,122 @@ export const getMonthlyLeaderboardData = async () => {
     }
   }
 }
+export const getLeaderboardByDate = async (date: string) => {
+  try {
+    const startDate = new Date(date).toISOString().split("T")[0];
+
+    const leaderboard = await prisma.$queryRaw`
+      WITH first_status AS (
+          SELECT 
+              game_id,
+              order_id,
+              points,
+              gmv,
+              order_status,
+              timestamp_created,
+              ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
+          FROM public."orderData"
+          WHERE timestamp_created >= ${startDate}::DATE
+            AND timestamp_created < (${startDate}::DATE + INTERVAL '1 day')
+      ),
+      valid_orders AS (
+          SELECT
+              game_id,
+              order_id,
+              points,
+              gmv,
+              order_status,
+              CASE WHEN rn = 1 AND order_status = 'created' THEN 1 ELSE 0 END AS valid_order
+          FROM first_status
+      )
+      SELECT 
+          game_id,
+          SUM(points)::DOUBLE PRECISION AS total_points,
+          COUNT(valid_order) AS total_orders,
+          SUM(gmv)::BIGINT AS total_gmv,
+          ${startDate}::DATE AS leaderboard_day_start
+      FROM valid_orders
+      WHERE valid_order = 1
+      GROUP BY game_id
+      HAVING SUM(points) >= 0
+      ORDER BY total_points DESC;
+    `;
+
+    return {
+      statusCode: 200,
+      body: leaderboard,
+    };
+  } catch (error) {
+    console.error("Error fetching leaderboard:", error);
+    return {
+      statusCode: 500,
+      body: "Internal Server Error",
+    };
+  }
+};
+export const fetchLeaderboardForWeek = async (date: string) => {
+  try {
+    const startDate = new Date(date);
+    const startOfWeek = new Date(startDate);
+    startOfWeek.setDate(startDate.getDate()); // Start from given date
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7); // Next 7 days
+
+    const startDateStr = startOfWeek.toISOString().split("T")[0]; // YYYY-MM-DD
+    const endDateStr = endOfWeek.toISOString().split("T")[0]; // YYYY-MM-DD
+
+    console.log(`Fetching leaderboard from ${startDateStr} to ${endDateStr}`);
+
+    const leaderboard = await prisma.$queryRaw`
+      WITH first_status AS (
+          SELECT 
+              game_id,
+              order_id,
+              points,
+              gmv,
+              order_status,
+              timestamp_created,
+              ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
+          FROM public."orderData"
+          WHERE timestamp_created >= ${startDateStr}::DATE
+            AND timestamp_created < ${endDateStr}::DATE
+      ),
+      valid_orders AS (
+          SELECT
+              game_id,
+              order_id,
+              points,
+              gmv,
+              order_status,
+              CASE WHEN rn = 1 AND order_status = 'created' THEN 1 ELSE 0 END AS valid_order
+          FROM first_status
+      )
+      SELECT 
+          game_id,
+          SUM(points)::DOUBLE PRECISION AS total_points,
+          COUNT(valid_order) AS total_orders,
+          SUM(gmv)::BIGINT AS total_gmv,
+          ${startDateStr}::DATE AS leaderboard_week_start
+      FROM valid_orders
+      WHERE valid_order = 1
+      GROUP BY game_id
+      HAVING SUM(points) >= 0
+      ORDER BY total_points DESC;
+    `;
+
+    return {
+      statusCode: 200,
+      body: leaderboard,
+    };
+  } catch (error) {
+    console.error("Error fetching weekly leaderboard:", error);
+    return {
+      statusCode: 500,
+      body: "Internal Server Error",
+    };
+  }
+};
+
 
 export const fetchLeaderboardData = async () => {
   try {

@@ -6,7 +6,9 @@ import {
   createOrRefreshMonthlyLeaderboardView,
   createOrRefreshWeeklyLeaderboardView,
   fetchLeaderboardData,
+  fetchLeaderboardForWeek,
   getDailyLeaderboardData,
+  getLeaderboardByDate,
   getMonthlyLeaderboardData,
   getWeeklyLeaderboardData,
   // leaderboardTrigger,
@@ -123,8 +125,10 @@ const orderController = {
 
   getWeeklyLeaderboardData: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      console.log("_req", _req)
-      const orders = await getWeeklyLeaderboardData()
+      const {date} = _req.query
+      
+      const orders = date ? await fetchLeaderboardForWeek(date as any) : await getWeeklyLeaderboardData()
+
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
       console.error("❌ Error retrieving orders:", error)
@@ -145,8 +149,9 @@ const orderController = {
 
   getDailyLeaderboardData: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      console.log("_req", _req)
-      const orders = await getDailyLeaderboardData()
+      const {date} = _req.query
+      const orders = date ? await getLeaderboardByDate(date as any) : await getDailyLeaderboardData()
+
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
       console.error("❌ Error retrieving orders:", error)
