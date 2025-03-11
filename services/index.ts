@@ -3,6 +3,7 @@ import csvParser from "csv-parser"
 import { PrismaClient } from "@prisma/client"
 import moment from "moment-timezone"
 import { blake2b } from "blakejs"
+import { logger } from "../shared/logger"
 // import dayjs from "dayjs"
 
 const prisma = new PrismaClient()
@@ -602,7 +603,10 @@ const processNewOrders = async (orders: any) => {
 }
 
 const processCancellations = async (cancellations: any) => {
+  
   const processedData = []
+  logger.info("Showing Cancellation orders!")
+  console.log(cancellations)
 
   try {
     for (const row of cancellations) {
@@ -623,6 +627,9 @@ const processCancellations = async (cancellations: any) => {
             timestamp_created: "desc",
           },
         })
+        // above is getting the number of order_id with not status of cancelled
+
+        // underline is getting the number of uid with order status of cancelled
         const canceledOrderCount =
           originalOrder &&
           (await prisma.orderData.count({
@@ -633,7 +640,32 @@ const processCancellations = async (cancellations: any) => {
               },
             },
           }))
+          
         console.log("canceledOrderCount", canceledOrderCount)
+        // Finding if the current user with the gameid and timestamp created has been winner of any type from the DailyWinnner
+        const ifBeenAWinner = await prisma.dailyWinner.findMany({
+          where: {
+            AND: [
+              { game_id: originalOrder?.game_id },
+              { winning_date: originalOrder?.timestamp_created }
+            ]
+          }
+        });
+        console.log('ifBeenAWinner', ifBeenAWinner)
+        
+        // now check how many points to be deducted
+        
+        
+
+
+
+
+
+
+        // now i need to check if canceledOrderCount = 1 ? -150 points
+        // if count = 2 ? point = 0
+        // else blacklist the player
+        // then deduct
         if (canceledOrderCount && canceledOrderCount >= 3) {
           console.log(`${originalOrder?.game_id} is blacklisted `)
         }
