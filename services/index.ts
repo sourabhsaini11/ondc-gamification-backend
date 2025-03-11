@@ -41,14 +41,20 @@ export const parseAndStoreCsv = async (
             return reject({ success: false, message: "Record length exceeded 100000" })
           }
 
-          let check = false
+          let check = false;
+          const emptyFields: string[] = []; 
           const normalizedRow = Object.fromEntries(
             Object.entries(row).map(([key, value]) => {
               const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, "_")
 
               if (value == "" || value == undefined || value === null) {
-                check = true
+                check = true;
+                if (!emptyFields.includes(normalizedKey)) {
+                  emptyFields.push(normalizedKey);
+                }
               }
+             
+              
 
               if (key == "order_status") {
                 const normalizedValue = key.trim().toLowerCase().replace(/\s+/g, "_")
@@ -59,11 +65,12 @@ export const parseAndStoreCsv = async (
             }),
           )
           if (check) {
-            console.error("Values cant be empty")
-            return reject({ success: false, message: `Values can't be empty or invalid at index:${rowCount}` })
+            console.error("Values can't be empty");
+            return reject({
+              success: false,
+              message: `The following fields are empty or invalid: ${emptyFields.join(", ")} at index:${rowCount}`,
+            });
           }
-
-          console.log("normalizedRow", normalizedRow)
 
           const requiredFields = [
             "phone_number",
@@ -513,16 +520,17 @@ const processNewOrders = async (orders: any) => {
             uidFirstOrderTimestamp[uid] = String(new Date(timestampCreated).getUTCHours()).padStart(2, "0")
           }
 
-          const firstName = row.name ? row.name.split(" ")[0] : "User"
-          const firstUidDigits = uid.slice(3)
-          const lastUidDigits = uid.length >= 4 ? uid.slice(-4) : uid
+          // const firstName = row.name ? row.name.split(" ")[0] : "User"
+          const fullUid = uid
+         
           // Hash the lastUidDigits using BLAKE2b-512
           // const hash = blake2b(lastUidDigits, undefined, 64) // 64-byte (512-bit) hash
           // const hashedlastUidDigits = Buffer.from(hash).toString("hex")
           // console.log("hashedlastUidDigits", hashedlastUidDigits)
           lastStreakDate = timestampCreated
           // const temp_id = `${firstName}${uidFirstOrderTimestamp[uid]}${lastUidDigits}`
-          const temp_id = `${firstUidDigits}${firstName}${lastUidDigits}`
+          // const temp_id = `${firstUidDigits}${firstName}${lastUidDigits}`
+          const temp_id = `${fullUid}`
           const hash = blake2b(temp_id, undefined, 64) // 64-byte (512-bit) hash
           const hashedId = Buffer.from(hash).toString("hex")
           game_id = hashedId
