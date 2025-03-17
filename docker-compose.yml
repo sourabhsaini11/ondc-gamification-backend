@@ -4,7 +4,7 @@ services:
     container_name: gamafication-node-backend
     build: .
     ports:
-      - 1147:8000
+      - 8000:8000
     restart: always
     environment:
       DATABASE_URL: postgres://postgres:1234@db:5432/gamafication
