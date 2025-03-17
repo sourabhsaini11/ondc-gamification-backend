@@ -41,20 +41,18 @@ export const parseAndStoreCsv = async (
             return reject({ success: false, message: "Record length exceeded 100000" })
           }
 
-          let check = false;
-          const emptyFields: string[] = []; 
+          let check = false
+          const emptyFields: string[] = []
           const normalizedRow = Object.fromEntries(
             Object.entries(row).map(([key, value]) => {
               const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, "_")
 
               if (value == "" || value == undefined || value === null) {
-                check = true;
+                check = true
                 if (!emptyFields.includes(normalizedKey)) {
-                  emptyFields.push(normalizedKey);
+                  emptyFields.push(normalizedKey)
                 }
               }
-             
-              
 
               if (key == "order_status") {
                 const normalizedValue = key.trim().toLowerCase().replace(/\s+/g, "_")
@@ -65,11 +63,11 @@ export const parseAndStoreCsv = async (
             }),
           )
           if (check) {
-            console.error("Values can't be empty");
+            console.error("Values can't be empty")
             return reject({
               success: false,
               message: `The following fields are empty or invalid: ${emptyFields.join(", ")} at index:${rowCount}`,
-            });
+            })
           }
 
           const requiredFields = [
@@ -232,36 +230,36 @@ export const aggregateDailyGmvAndPoints = async () => {
     console.log("🔄 Aggregating daily GMV and points...")
 
     // Get distinct dates using prisma.$queryRawUnsafe
-    const uniqueDates: any = await prisma.$queryRawUnsafe<{ date: any }[]>(
+    const uniqueDates: any = (await prisma.$queryRawUnsafe<{ date: any }[]>(
       `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date 
 FROM "orderData";
 `,
-    )as { date: any }[];
+    )) as { date: any }[]
 
     console.log("uniqueDates", uniqueDates)
 
     for (const { date } of uniqueDates) {
       // Find the game with the highest GMV for the date
-      const highestGmv = await prisma.$queryRawUnsafe(
+      const highestGmv = (await prisma.$queryRawUnsafe(
         `SELECT id, game_id 
          FROM "orderData" 
          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
          GROUP BY id, game_id 
          ORDER BY SUM(gmv) DESC 
          LIMIT 1;`,
-      )as { game_id: string }[]
+      )) as { game_id: string }[]
 
       console.log("highestGmv", highestGmv)
 
       // Find the game with the highest order count for the date
-      const highestOrders = await prisma.$queryRawUnsafe(
+      const highestOrders = (await prisma.$queryRawUnsafe(
         `SELECT id, game_id 
          FROM "orderData" 
          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
          GROUP BY id, game_id 
          ORDER BY COUNT(order_id) DESC 
          LIMIT 1;`,
-      )as { game_id: string }[]
+      )) as { game_id: string }[]
 
       console.log("highestOrders", highestOrders)
 
@@ -501,7 +499,7 @@ const processNewOrders = async (orders: any) => {
 
           // const firstName = row.name ? row.name.split(" ")[0] : "User"
           const fullUid = uid
-         
+
           // Hash the lastUidDigits using BLAKE2b-512
           // const hash = blake2b(lastUidDigits, undefined, 64) // 64-byte (512-bit) hash
           // const hashedlastUidDigits = Buffer.from(hash).toString("hex")
@@ -589,7 +587,6 @@ const processNewOrders = async (orders: any) => {
 }
 
 const processCancellations = async (cancellations: any) => {
-  
   const processedData = []
   logger.info("Showing Cancellation orders!")
   console.log(cancellations)
@@ -626,27 +623,17 @@ const processCancellations = async (cancellations: any) => {
               },
             },
           }))
-          
+
         console.log("canceledOrderCount", canceledOrderCount)
         // Finding if the current user with the gameid and timestamp created has been winner of any type from the DailyWinnner
         const ifBeenAWinner = await prisma.dailyWinner.findMany({
           where: {
-            AND: [
-              { game_id: originalOrder?.game_id },
-              { winning_date: originalOrder?.timestamp_created }
-            ]
-          }
-        });
-        console.log('ifBeenAWinner', ifBeenAWinner)
-        
+            AND: [{ game_id: originalOrder?.game_id }, { winning_date: originalOrder?.timestamp_created }],
+          },
+        })
+        console.log("ifBeenAWinner", ifBeenAWinner)
+
         // now check how many points to be deducted
-        
-        
-
-
-
-
-
 
         // now i need to check if canceledOrderCount = 1 ? -150 points
         // if count = 2 ? point = 0
@@ -1187,7 +1174,7 @@ const deductStreakPointsForFutureOrders = async (
       },
       select: { order_id: true },
     })
-    const canceledOrderIds = canceledOrders.map((order:any) => order.order_id)
+    const canceledOrderIds = canceledOrders.map((order: any) => order.order_id)
 
     // Check if more orders exist for the same user, game, and day
     const sameDayOrders = await prisma.orderData.findMany({
@@ -1391,7 +1378,7 @@ const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string
       },
     })
 
-    const cancelledOrderIds = cancelledOrders.map((order:any) => order.order_id)
+    const cancelledOrderIds = cancelledOrders.map((order: any) => order.order_id)
 
     // Add the provided order_id to the exclusion list
     if (order_id) {
