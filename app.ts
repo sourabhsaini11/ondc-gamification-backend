@@ -14,7 +14,16 @@ const createServer = (): express.Application => {
   const app: Application = express()
   // app.use(helmet({ crossOriginResourcePolicy: false }))
   app.options("*", cors())
-  app.use(cors())
+  const corsOptions = {
+    origin: "*", // Replace with your frontend domain
+    methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+    allowedHeaders: "*",
+    optionsSuccessStatus: 204,
+  }
+
+  // Use CORS middleware
+  app.use(cors(corsOptions))
+  // app.use(cors())
   app.use(express.json())
   app.use(express.urlencoded({ extended: true }))
   app.use("/api/v1/users", userRouter)
