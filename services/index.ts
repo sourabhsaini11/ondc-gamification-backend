@@ -41,14 +41,20 @@ export const parseAndStoreCsv = async (
             return reject({ success: false, message: "Record length exceeded 100000" })
           }
 
-          let check = false
+          let check = false;
+          const emptyFields: string[] = []; 
           const normalizedRow = Object.fromEntries(
             Object.entries(row).map(([key, value]) => {
               const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, "_")
 
               if (value == "" || value == undefined || value === null) {
-                check = true
+                check = true;
+                if (!emptyFields.includes(normalizedKey)) {
+                  emptyFields.push(normalizedKey);
+                }
               }
+             
+              
 
               if (key == "order_status") {
                 const normalizedValue = key.trim().toLowerCase().replace(/\s+/g, "_")
@@ -59,11 +65,12 @@ export const parseAndStoreCsv = async (
             }),
           )
           if (check) {
-            console.error("Values cant be empty")
-            return reject({ success: false, message: `Values can't be empty or invalid at index:${rowCount}` })
+            console.error("Values can't be empty");
+            return reject({
+              success: false,
+              message: `The following fields are empty or invalid: ${emptyFields.join(", ")} at index:${rowCount}`,
+            });
           }
-
-          console.log("normalizedRow", normalizedRow)
 
           const requiredFields = [
             "phone_number",
@@ -231,32 +238,32 @@ export const aggregateDailyGmvAndPoints = async () => {
       `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date 
 FROM "orderData";
 `,
-    )
+    )as { date: any }[];
 
     console.log("uniqueDates", uniqueDates)
 
     for (const { date } of uniqueDates) {
       // Find the game with the highest GMV for the date
-      const highestGmv = await prisma.$queryRawUnsafe<{ game_id: string }[]>(
+      const highestGmv = await prisma.$queryRawUnsafe(
         `SELECT id, game_id 
          FROM "orderData" 
          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
          GROUP BY id, game_id 
          ORDER BY SUM(gmv) DESC 
          LIMIT 1;`,
-      )
+      )as { game_id: string }[]
 
       console.log("highestGmv", highestGmv)
 
       // Find the game with the highest order count for the date
-      const highestOrders = await prisma.$queryRawUnsafe<{ game_id: string }[]>(
+      const highestOrders = await prisma.$queryRawUnsafe(
         `SELECT id, game_id 
          FROM "orderData" 
          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
          GROUP BY id, game_id 
          ORDER BY COUNT(order_id) DESC 
          LIMIT 1;`,
-      )
+      )as { game_id: string }[]
 
       console.log("highestOrders", highestOrders)
 
@@ -513,16 +520,17 @@ const processNewOrders = async (orders: any) => {
             uidFirstOrderTimestamp[uid] = String(new Date(timestampCreated).getUTCHours()).padStart(2, "0")
           }
 
-          const firstName = row.name ? row.name.split(" ")[0] : "User"
-          const firstUidDigits = uid.slice(3)
-          const lastUidDigits = uid.length >= 4 ? uid.slice(-4) : uid
+          // const firstName = row.name ? row.name.split(" ")[0] : "User"
+          const fullUid = uid
+         
           // Hash the lastUidDigits using BLAKE2b-512
           // const hash = blake2b(lastUidDigits, undefined, 64) // 64-byte (512-bit) hash
           // const hashedlastUidDigits = Buffer.from(hash).toString("hex")
           // console.log("hashedlastUidDigits", hashedlastUidDigits)
           lastStreakDate = timestampCreated
           // const temp_id = `${firstName}${uidFirstOrderTimestamp[uid]}${lastUidDigits}`
-          const temp_id = `${firstUidDigits}${firstName}${lastUidDigits}`
+          // const temp_id = `${firstUidDigits}${firstName}${lastUidDigits}`
+          const temp_id = `${fullUid}`
           const hash = blake2b(temp_id, undefined, 64) // 64-byte (512-bit) hash
           const hashedId = Buffer.from(hash).toString("hex")
           game_id = hashedId
@@ -1201,7 +1209,7 @@ const deductStreakPointsForFutureOrders = async (
       },
       select: { order_id: true },
     })
-    const canceledOrderIds = canceledOrders.map((order) => order.order_id)
+    const canceledOrderIds = canceledOrders.map((order:any) => order.order_id)
 
     // Check if more orders exist for the same user, game, and day
     const sameDayOrders = await prisma.orderData.findMany({
@@ -1405,7 +1413,7 @@ const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string
       },
     })
 
-    const cancelledOrderIds = cancelledOrders.map((order) => order.order_id)
+    const cancelledOrderIds = cancelledOrders.map((order:any) => order.order_id)
 
     // Add the provided order_id to the exclusion list
     if (order_id) {

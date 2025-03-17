@@ -11,7 +11,7 @@ const csvController = {
       }
 
       const filePath = req.file.path
-      const result = await parseAndStoreCsv(filePath, req.user?.userId)
+      const result = await parseAndStoreCsv(filePath, req.user?.userId || 1)
 
       if (!result.success) {
         return res.status(400).json({ success: false, message: result.message })
