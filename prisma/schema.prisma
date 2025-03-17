@@ -72,9 +72,14 @@ model DailyWinner {
   game_id      String      
   points       Int
   position       Int
+  
   type       String
   winning_date DateTime @default(now())
 
   @@map("dailywinner")
 }
+// if order_status -> cancel 
+// store the game_id and createdAt
+// then in DailyWinner search for the game_id 
+// 
 
