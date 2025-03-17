@@ -18,6 +18,7 @@ const userController = {
       const data = await authService.login(email, password)
       return res.status(200).json({ message: "Login successful", ...data })
     } catch (error: any) {
+      console.log("error", error)
       return res.status(400).json({ error: error.message })
     }
   },
