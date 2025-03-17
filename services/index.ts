@@ -230,10 +230,15 @@ export const aggregateDailyGmvAndPoints = async () => {
     console.log("🔄 Aggregating daily GMV and points...")
 
     // Get distinct dates using prisma.$queryRawUnsafe
-    const uniqueDates: any = (await prisma.$queryRawUnsafe<{ date: Date }[]>(
+    //     const uniqueDates: any = (await prisma.$queryRawUnsafe<{ date: Date }[]>(
+    //       `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date
+    // FROM "orderData";
+    // `,
+    //     )) as { date: Date }[]
+
+    const uniqueDates: any = (await prisma.$queryRawUnsafe(
       `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date 
-FROM "orderData";
-`,
+  FROM "orderData";`,
     )) as { date: Date }[]
 
     console.log("uniqueDates", uniqueDates)
