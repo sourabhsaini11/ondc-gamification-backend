@@ -238,32 +238,32 @@ export const aggregateDailyGmvAndPoints = async () => {
       `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date 
 FROM "orderData";
 `,
-    )
+    )as { date: any }[];
 
     console.log("uniqueDates", uniqueDates)
 
     for (const { date } of uniqueDates) {
       // Find the game with the highest GMV for the date
-      const highestGmv = await prisma.$queryRawUnsafe<{ game_id: string }[]>(
+      const highestGmv = await prisma.$queryRawUnsafe(
         `SELECT id, game_id 
          FROM "orderData" 
          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
          GROUP BY id, game_id 
          ORDER BY SUM(gmv) DESC 
          LIMIT 1;`,
-      )
+      )as { game_id: string }[]
 
       console.log("highestGmv", highestGmv)
 
       // Find the game with the highest order count for the date
-      const highestOrders = await prisma.$queryRawUnsafe<{ game_id: string }[]>(
+      const highestOrders = await prisma.$queryRawUnsafe(
         `SELECT id, game_id 
          FROM "orderData" 
          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
          GROUP BY id, game_id 
          ORDER BY COUNT(order_id) DESC 
          LIMIT 1;`,
-      )
+      )as { game_id: string }[]
 
       console.log("highestOrders", highestOrders)
 
@@ -1208,7 +1208,7 @@ const deductStreakPointsForFutureOrders = async (
       },
       select: { order_id: true },
     })
-    const canceledOrderIds = canceledOrders.map((order) => order.order_id)
+    const canceledOrderIds = canceledOrders.map((order:any) => order.order_id)
 
     // Check if more orders exist for the same user, game, and day
     const sameDayOrders = await prisma.orderData.findMany({
@@ -1412,7 +1412,7 @@ const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string
       },
     })
 
-    const cancelledOrderIds = cancelledOrders.map((order) => order.order_id)
+    const cancelledOrderIds = cancelledOrders.map((order:any) => order.order_id)
 
     // Add the provided order_id to the exclusion list
     if (order_id) {
