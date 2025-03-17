@@ -686,7 +686,46 @@ export const getWeeklyLeaderboardData = async () => {
     }
   }
 }
+export const getAllTimeLeaders = async () => {
+  try {
+    const leaderboardData: any = await prisma.$queryRaw`
+  WITH valid_orders AS (
+      SELECT order_id
+      FROM public."orderData"
+      GROUP BY order_id
+      HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
+  )
+  SELECT
+      o.game_id,
+      COALESCE(SUM(r.points), 0) AS total_points,
+      COUNT(DISTINCT o.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+      COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv
+  FROM public."orderData" o
+  LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id
+  WHERE o.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+  GROUP BY o.game_id
+  ORDER BY total_points DESC;
+`;
 
+    const updatedData = leaderboardData.map((row: any) => ({
+      ...row,
+      total_orders: row.total_orders.toString(),
+      total_points: row.total_points.toString(),
+      total_gmv: row.total_gmv.toString(),
+    }))
+
+    return {
+      statusCode: 200,
+      body: updatedData,
+    }
+  } catch (error) {
+    console.error("Error fetching all time leaderboard data:", error)
+    return {
+      statusCode: 500,
+      body: "Internal Server Error",
+    }
+  }
+}
 export const getMonthlyLeaderboardData = async () => {
   try {
     const leaderboardData: any = await prisma.$queryRaw`

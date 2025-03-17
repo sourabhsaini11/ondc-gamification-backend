@@ -13,6 +13,7 @@ import {
   createOrRefreshWeeklyLeaderboardView,
   fetchLeaderboardData,
   fetchLeaderboardForWeek,
+  getAllTimeLeaders,
   getDailyLeaderboardData,
   getLeaderboardByDate,
   getMonthlyLeaderboardData,
@@ -22,9 +23,7 @@ import {
 } from "../../services/points.servce"
 // import { logger } from "../../shared/logger"
 import { Parser } from "json2csv"
-import { PrismaClient } from "@prisma/client"
 
-const prisma = new PrismaClient()
 const orderController = {
   uploadCsv: async (req: any, res: Response): Promise<Response> => {
     try {
@@ -215,9 +214,15 @@ const orderController = {
       return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
-  tempFunction: async (_req: any, res: Response): Promise<Response> => {
-    const orders = await prisma.orderData.findMany()
-    return res.status(200).json({ orders })
+  getAllTimeLeaderboardData: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+      console.log("_req", _req)
+      const orders = await getAllTimeLeaders()
+      return res.status(200).json({ success: true, data: orders })
+    } catch (error) {
+      console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
   },
 }
 
