@@ -534,6 +534,7 @@ const processNewOrders = async (orders: any) => {
           const hash = blake2b(temp_id, undefined, 64) // 64-byte (512-bit) hash
           const hashedId = Buffer.from(hash).toString("hex")
           game_id = hashedId
+          logger.info(`The GameID is: ${game_id}`)
           // phone_number = "XXXXXX" + lastUidDigits
         }
 
@@ -802,7 +803,9 @@ const processCancellations = async (cancellations: any) => {
             originalGmv,
             orderId,
           )
-          pointsAdjustment = newPoints - originalPoints
+          
+
+          pointsAdjustment = newPoints - originalPoints // 110 - 210 = -110
           rewardledgerUpdate(
             gameId,
             orderId,
@@ -1084,6 +1087,7 @@ const calculatePoints = async (
   let points = 10
   const gmvPoints = Math.floor(gmv / 10)
   points += gmvPoints
+  
   if (condition === "partial") {
     // await rewardledgerUpdate(game_id, orderId, 0, -10.0, "base Points deducted for part cancel ", true)
     // await rewardledgerUpdate(
@@ -1095,6 +1099,7 @@ const calculatePoints = async (
     //   true,
     //   timestamp,
     // )
+    // ? Why are we sending points + 50 in the case of originalGMV excedding 1000 & current GMV deceding 1000
     if (originalGmv > 1000 && gmv < 1000) {
       await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV Greater 1000 in partial cancellation ", true, timestamp)
       return points + 50
@@ -1628,7 +1633,8 @@ const bulkInsertDataIntoDb = async (data: any) => {
       last_streak_date: row.last_streak_date,
     }))
 
-    await prisma.orderData.createMany({ data: formattedData })
+    const insertedData = await prisma.orderData.createMany({ data: formattedData })
+    console.log('The inserted Data is: ', insertedData)
     console.log(`Bulk data inserted successfully.`)
     // await prisma.$executeRawUnsafe(`SELECT update_leaderboard_manual()`)
   } catch (error) {
