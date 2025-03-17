@@ -230,17 +230,17 @@ export const aggregateDailyGmvAndPoints = async () => {
     console.log("🔄 Aggregating daily GMV and points...")
 
     // Get distinct dates using prisma.$queryRawUnsafe
-    const uniqueDates: any = (await prisma.$queryRawUnsafe<{ date: string }[]>(
+    const uniqueDates: any = (await prisma.$queryRawUnsafe<{ date: Date }[]>(
       `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date 
 FROM "orderData";
 `,
-    )) as { date: string }[]
+    )) as { date: Date }[]
 
     console.log("uniqueDates", uniqueDates)
 
     for (const { date } of uniqueDates) {
       // Find the game with the highest GMV for the date
-      const highestGmv = (await prisma.$queryRawUnsafe(
+      const highestGmv: any = (await prisma.$queryRawUnsafe(
         `SELECT id, game_id 
          FROM "orderData" 
          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
@@ -252,7 +252,7 @@ FROM "orderData";
       console.log("highestGmv", highestGmv)
 
       // Find the game with the highest order count for the date
-      const highestOrders = (await prisma.$queryRawUnsafe(
+      const highestOrders: any = (await prisma.$queryRawUnsafe(
         `SELECT id, game_id 
          FROM "orderData" 
          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
