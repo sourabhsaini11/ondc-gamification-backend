@@ -13,7 +13,7 @@ import { aggregatePointsCron } from "./services/cron.service"
 const createServer = (): express.Application => {
   const app: Application = express()
   app.use(helmet({ crossOriginResourcePolicy: false }))
-  app.use(cors({ origin: "*" }))
+  app.use(cors())
   app.use(express.json())
   app.use(express.urlencoded({ extended: true }))
   app.use("/api/v1/users", userRouter)
