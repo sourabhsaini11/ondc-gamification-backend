@@ -16,7 +16,6 @@ export const aggregatePointsSummary = async () => {
 
     // Upsert aggregated data into leaderboard
     for (const { game_id, total_points, total_orders, total_gmv } of aggregatedData) {
-      console.log("game_id, total_points, total_orders, total_gmv", game_id, total_points, total_orders, total_gmv)
       const data = {
         game_id,
         total_points: Number(total_points),

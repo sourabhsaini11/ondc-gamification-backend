@@ -179,8 +179,6 @@ export const parseAndStoreCsv = async (
             return resolve({ success: false, message: "No valid records found in the CSV file" })
           }
 
-          // console.log("records", records)
-
           const newOrders: any = []
           const cancellations: any = []
 
@@ -406,25 +404,6 @@ export const getOrders = async (page: number = 1, pageSize: number = 100) => {
   }
 }
 
-// const ProcessSteak = (lastStreakDate: Date, currentTimestamp: Date, streakcount: number) => {
-//   let streakMaintain = true
-
-//   if (lastStreakDate) {
-//     const dayDifference = Math.floor((currentTimestamp.getTime() - lastStreakDate.getTime()) / (1000 * 3600 * 24))
-
-//     if (dayDifference === 1) {
-//       streakcount += 1 // Increment streak count for consecutive days
-//     } else if (dayDifference > 1) {
-//       streakcount = 1 // Reset streak count if the difference is more than 1 day
-//       streakMaintain = false
-//     } else if (dayDifference < 1) {
-//       streakcount = streakcount || 1 // Ensure streak count is at least 1 if no difference
-//     }
-//   }
-
-//   return { streakMaintain, streakcount, currentTimestamp }
-// }
-
 // const CalculatePoints = async (gmv: number, streakCount: number, uid: string) => {
 //   gmv = Math.max(0, parseFloat(gmv.toString()))
 
@@ -553,7 +532,6 @@ const processNewOrders = async (orders: any) => {
         console.log("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
 
         // Handle streak logic
-        // console.log("streakMaintain", lastStreakDate, timestampCreated, streakCount)
         const { streakMaintain, newStreakCount, newLastStreakDate }: any = processStreak(
           lastStreakDate,
           timestampCreated,
