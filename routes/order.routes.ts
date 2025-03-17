@@ -16,5 +16,7 @@ orderRouter.get("/daily-leaderboard", orderController.getDailyLeaderboardData)
 orderRouter.get("/create/month-leaderboard", orderController.createOrRefreshMonthlyLeaderboardView)
 orderRouter.get("/view/leaderboard", orderController.fetchLeaderboardData)
 orderRouter.get("/uploads", authenticate, orderController.getUserUploads)
+orderRouter.get("/download-csv", authenticate, orderController.downloadCSV)
+orderRouter.get('/temp/getOrderData', orderController.tempFunction)
 
 export default orderRouter

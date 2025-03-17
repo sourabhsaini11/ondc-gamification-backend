@@ -1,17 +1,24 @@
 import { Request, Response } from "express"
-import { parseAndStoreCsv, getOrders, getUserOrders } from "../../services"
+import { parseAndStoreCsv, getUserOrders, getOrders, getUserOrdersForCSV } from "../../services"
 import {
   aggregatePointsSummary,
   createOrRefreshLeaderboardView,
   createOrRefreshMonthlyLeaderboardView,
   createOrRefreshWeeklyLeaderboardView,
   fetchLeaderboardData,
+  fetchLeaderboardForWeek,
   getDailyLeaderboardData,
+  getLeaderboardByDate,
   getMonthlyLeaderboardData,
   getWeeklyLeaderboardData,
+  // leaderboardTrigger,
+  rewardLedgerTrigger,
 } from "../../services/points.servce"
 // import { logger } from "../../shared/logger"
+import { Parser } from "json2csv"
+import { PrismaClient } from "@prisma/client"
 
+const prisma = new PrismaClient()
 const orderController = {
   uploadCsv: async (req: any, res: Response): Promise<Response> => {
     try {
@@ -19,15 +26,57 @@ const orderController = {
         return res.status(400).json({ success: false, message: "No file uploaded" })
       }
 
-      console.log("req", req)
-
       const filePath = req.file.path
-      await parseAndStoreCsv(filePath, req.user?.userId)
+      const result = await parseAndStoreCsv(filePath, req.user?.userId)
 
-      return res.status(200).json({ success: true, message: "CSV processed successfully" })
+      if (!result.success) {
+        return res.status(400).json({ success: false, message: result.message })
+      }
+
+      // leaderboardTrigger()
+      rewardLedgerTrigger()
+      return res.status(200).json({ success: true, message: result.message })
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message || "Internal Server Error" })
+    }
+  },
+
+  downloadCSV: async (req: any, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.userId
+      const { orders } = await getUserOrdersForCSV(userId)
+
+      if (!orders || orders.length === 0) {
+        res.status(404).json({ success: false, message: "No orders found." })
+        return
+      }
+
+      const fields = [
+        "game_id",
+        "order_id",
+        "name",
+        "domain",
+        "buyer_app_id",
+        "total_price",
+        // "shipping_charges",
+        // "taxes",
+        // "discount",
+        // "convenience_fee",
+        "order_status",
+        "points",
+        "timestamp_created",
+        "timestamp_updated",
+      ]
+      const opts = { fields }
+      const parser = new Parser(opts)
+      const csv = parser?.parse(orders)
+
+      res.setHeader("Content-Type", "text/csv")
+      res.setHeader("Content-Disposition", "attachment; filename=orders.csv")
+      res.status(200).send(csv)
     } catch (error) {
-      console.log(error)
-      return res.status(500).json({ success: false, message: "Internal Server Error" })
+      console.error("Error generating CSV:", error)
+      res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
 
@@ -45,7 +94,7 @@ const orderController = {
 
   aggregatePointsSummary: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      console.log("_req", _req)
+      console.log("_req", _req.body)
       const orders = await aggregatePointsSummary()
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
@@ -78,8 +127,10 @@ const orderController = {
 
   getWeeklyLeaderboardData: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      console.log("_req", _req)
-      const orders = await getWeeklyLeaderboardData()
+      const {date} = _req.query
+      
+      const orders = date ? await fetchLeaderboardForWeek(date as any) : await getWeeklyLeaderboardData()
+
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
       console.error("❌ Error retrieving orders:", error)
@@ -94,14 +145,15 @@ const orderController = {
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
       console.error("❌ Error retrieving orders:", error)
-      return res.status(500).json({ success: false, message: "Internal Server Error" })
+      return res.status(500).json({ success: false, message: "Internal Server Error", data: [] })
     }
   },
 
   getDailyLeaderboardData: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      console.log("_req", _req)
-      const orders = await getDailyLeaderboardData()
+      const {date} = _req.query
+      const orders = date ? await getLeaderboardByDate(date as any) : await getDailyLeaderboardData()
+
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
       console.error("❌ Error retrieving orders:", error)
@@ -157,6 +209,12 @@ const orderController = {
       return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
+  tempFunction: async (_req: any, res: Response): Promise<Response> => {
+    const orders = await prisma.orderData.findMany()
+    return res.status(200).json({orders})
+  },
+
+  
 }
 
 export default orderController

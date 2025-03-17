@@ -22,26 +22,27 @@ model OrderData {
   order_status           String   @default("Pending")
   timestamp_created      DateTime @default(now())
   timestamp_updated      DateTime @default(now())
-  category               String   @default("")
+  domain               String   @default("")
   buyer_app_id           String   @default("")
-  base_price             Float    @default(0.00)
-  shipping_charges       Float    @default(0.00)
-  taxes                  Float    @default(0.00)
-  discount               Float    @default(0.00)
-  convenience_fee        Float    @default(0.00)
-  seller_id              String   @default("")
+  total_price             Float    @default(0.00)
+  // shipping_charges       Float    @default(0.00)
+  // taxes                  Float    @default(0.00)
+  // discount               Float    @default(0.00)
+  // convenience_fee        Float    @default(0.00)
   streak_count           Int      @default(0)
   last_streak_date       DateTime
   updated_by_lambda      DateTime
   game_id                String   @default("")
   points                 Float    @default(0.00)
   streak_maintain        Boolean  @default(false)
+  same_day_order_count   Int      @default(1)
   entry_updated          Boolean  @default(false)
   highest_gmv_for_day    Boolean  @default(false)
   highest_orders_for_day Boolean  @default(false)
   gmv                    Int      @default(0)
   uploaded_by            Int
   @@map("orderData")
+  @@index([order_id])
 }
 
 model Leaderboard {
@@ -53,3 +54,32 @@ model Leaderboard {
 
   @@map("leaderboard")
 }
+model RewardLedger {
+id           Int    @id @default(autoincrement())
+order_id     String   @default("") 
+game_id      String   @default("")
+created_at  DateTime @default(now())
+updated_at  DateTime @default(now())
+points      Decimal    @default(0.00)
+gmv      Decimal    @default(0.00)
+reason      String     @default("")
+
+@@map("rewardledger")
+}
+
+model DailyWinner {
+  id           Int      @id @default(autoincrement())
+  game_id      String      
+  points       Int
+  position       Int
+  
+  type       String
+  winning_date DateTime @default(now())
+
+  @@map("dailywinner")
+}
+// if order_status -> cancel 
+// store the game_id and createdAt
+// then in DailyWinner search for the game_id 
+// 
+
