@@ -714,11 +714,12 @@ export const getMonthlyLeaderboardData = async () => {
     }
   }
 }
+
 export const getLeaderboardByDate = async (date: string) => {
   try {
-    const startDate = new Date(date).toISOString().split("T")[0];
+    const startDate = new Date(date).toISOString().split("T")[0]
 
-    const leaderboard = await prisma.$queryRaw`
+    const leaderboard: any = await prisma.$queryRaw`
       WITH valid_orders AS (
           SELECT order_id
           FROM public."orderData"
@@ -737,34 +738,40 @@ export const getLeaderboardByDate = async (date: string) => {
         AND o.order_id IN (SELECT order_id FROM valid_orders)
       GROUP BY o.game_id
       ORDER BY total_points DESC;
-    `;
+    `
+
+    const formattedLeaderboard = leaderboard.map((entry: any) => ({
+      ...entry,
+      total_orders: Number(entry.total_orders),
+      total_gmv: Number(entry.total_gmv),
+    }))
 
     return {
       statusCode: 200,
-      body: leaderboard,
-    };
+      body: formattedLeaderboard,
+    }
   } catch (error) {
-    console.error("Error fetching leaderboard:", error);
+    console.error("Error fetching leaderboard:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
-    };
+    }
   }
-};
+}
 
 export const fetchLeaderboardForWeek = async (date: string) => {
   try {
-    const startDate = new Date(date);
-    const currentWeekStart = new Date(startDate);
-    currentWeekStart.setDate(startDate.getDate() - startDate.getDay() + (startDate.getDay() === 0 ? -6 : 1)); // Monday of the week
-    const currentWeekStartStr = currentWeekStart.toISOString().split("T")[0]; // YYYY-MM-DD
-    const endDate = new Date(currentWeekStart);
-    endDate.setDate(currentWeekStart.getDate() + 7);
-    const endDateStr = endDate.toISOString().split("T")[0];
+    const startDate = new Date(date)
+    const currentWeekStart = new Date(startDate)
+    currentWeekStart.setDate(startDate.getDate() - startDate.getDay() + (startDate.getDay() === 0 ? -6 : 1)) // Monday of the week
+    const currentWeekStartStr = currentWeekStart.toISOString().split("T")[0] // YYYY-MM-DD
+    const endDate = new Date(currentWeekStart)
+    endDate.setDate(currentWeekStart.getDate() + 7)
+    const endDateStr = endDate.toISOString().split("T")[0]
 
-    console.log(`Fetching leaderboard for the week starting: ${currentWeekStartStr}`);
+    console.log(`Fetching leaderboard for the week starting: ${currentWeekStartStr}`)
 
-    const leaderboard = await prisma.$queryRaw`
+    const leaderboard: any = await prisma.$queryRaw`
       WITH valid_orders AS (
           SELECT order_id
           FROM public."orderData"
@@ -784,21 +791,26 @@ export const fetchLeaderboardForWeek = async (date: string) => {
         AND o.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
       GROUP BY o.game_id
       ORDER BY total_points DESC;
-    `;
+    `
+
+    const formattedLeaderboard = leaderboard.map((entry: any) => ({
+      ...entry,
+      total_orders: Number(entry.total_orders),
+      total_gmv: Number(entry.total_gmv),
+    }))
 
     return {
       statusCode: 200,
-      body: leaderboard,
-    };
+      body: formattedLeaderboard,
+    }
   } catch (error) {
-    console.error("Error fetching weekly leaderboard:", error);
+    console.error("Error fetching weekly leaderboard:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
-    };
+    }
   }
-};
-
+}
 
 export const fetchLeaderboardData = async () => {
   try {

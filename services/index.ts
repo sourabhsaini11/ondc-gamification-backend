@@ -542,11 +542,21 @@ const processNewOrders = async (orders: any) => {
         )
 
         console.log("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
+
+        // Handle streak logic
+        // console.log("streakMaintain", lastStreakDate, timestampCreated, streakCount)
+        const { streakMaintain, newStreakCount, newLastStreakDate }: any = processStreak(
+          lastStreakDate,
+          timestampCreated,
+          streakCount,
+        )
+
+        console.log("newStreakCount", newStreakCount, streakCount)
         const points = await calculatePoints(
           game_id,
           gmv,
           uid,
-          streakCount,
+          newStreakCount,
           "newOrder",
           timestampCreated,
           0,
@@ -559,16 +569,6 @@ const processNewOrders = async (orders: any) => {
         console.log("sec---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
 
         // console.log("potins", game_id, points)
-
-        // Handle streak logic
-        // console.log("streakMaintain", lastStreakDate, timestampCreated, streakCount)
-        const { streakMaintain, newStreakCount, newLastStreakDate }: any = processStreak(
-          lastStreakDate,
-          timestampCreated,
-          streakCount,
-        )
-
-        console.log("newStreakCount", newStreakCount, streakCount)
 
         processedData.push({
           ...row,
@@ -1041,7 +1041,7 @@ const calculatePoints = async (
 ) => {
   gmv = Math.max(0, parseFloat(gmv.toString()))
 
-  let points = 10
+  let points = 0
   const gmvPoints = Math.floor(gmv / 10)
   points += gmvPoints
   if (condition === "partial") {
@@ -1056,12 +1056,13 @@ const calculatePoints = async (
     //   timestamp,
     // )
     if (originalGmv > 1000 && gmv < 1000) {
-      await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV Greater 1000 in partial cancellation ", true, timestamp)
+      await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV < 1000 in partial cancellation ", true, timestamp)
       return points + 50
     }
 
     return points
   } else {
+    points += 10
     await rewardledgerUpdate(game_id, orderId, 0, +10.0, "base Points awarded for the order ", true, timestamp)
     // await rewardledgerUpdate(
     //   game_id,
@@ -1114,15 +1115,15 @@ const calculatePoints = async (
         .filter((key) => key <= streakCount),
     )
 
-    console.log("eligibleBonus", eligibleBonus, streakBonuses[streakCount + 1])
+    console.log("eligibleBonus", eligibleBonus, streakBonuses[streakCount])
 
-    if (streakBonuses[streakCount + 1]) {
-      points += streakBonuses[streakCount + 1]
+    if (streakBonuses[streakCount]) {
+      points += streakBonuses[streakCount]
       await rewardledgerUpdate(
         game_id,
         orderId,
         0,
-        +streakBonuses[streakCount + 1],
+        +streakBonuses[streakCount],
         "Points assigned for Streak maintaince ",
         true,
         timestamp,
