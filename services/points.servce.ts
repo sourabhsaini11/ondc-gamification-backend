@@ -106,23 +106,21 @@ export const createOrRefreshLeaderboardView = async () => {
     const previewResults = await prisma.$executeRawUnsafe(`
             CREATE VIEW daily_top_leaderboard AS
             WITH valid_orders AS (
-                SELECT order_id
-                FROM public."orderData"
-                GROUP BY order_id
-                HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
-            )
-            SELECT
-                o.game_id,
-                COALESCE(SUM(r.points), 0) AS total_points,
-                COUNT(DISTINCT o.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
-                COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
-                '${todayDate}'::DATE AS leaderboard_day_start
-            FROM public."orderData" o
-            LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id
-            WHERE DATE(o.timestamp_created) = '${todayDate}'::DATE
-              AND o.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-            GROUP BY o.game_id
-            ORDER BY total_points DESC;
+    SELECT order_id
+    FROM public."orderData"
+    GROUP BY order_id
+    HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
+)
+SELECT
+    r.game_id,
+    COALESCE(SUM(r.points), 0) AS total_points,
+    COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Count distinct order_ids
+    COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
+    '${todayDate}'::DATE AS leaderboard_day_start
+FROM public."rewardledger" r
+WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+GROUP BY r.game_id
+ORDER BY total_points DESC;
           `)
     //     const previewResults = await prisma.$executeRawUnsafe(`
     //       CREATE OR REPLACE VIEW daily_top_leaderboard AS
