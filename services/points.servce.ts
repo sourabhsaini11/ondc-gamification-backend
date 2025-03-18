@@ -373,16 +373,15 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
           HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
       )
       SELECT
-          o.game_id,
+          r.game_id,
           COALESCE(SUM(r.points), 0) AS total_points,
-          COUNT(DISTINCT o.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           '${currentWeekStartStr}'::DATE AS leaderboard_week_start
-      FROM public."orderData" o
-      LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id
-      WHERE DATE(o.timestamp_created) >= '${currentWeekStartStr}'::DATE
-        AND o.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-      GROUP BY o.game_id
+      FROM public."rewardledger" r 
+      WHERE DATE(r.created_at) >= '${currentWeekStartStr}'::DATE
+        AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+      GROUP BY r.game_id
       ORDER BY total_points DESC;
     `)
 
@@ -515,16 +514,15 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
           HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
       )
       SELECT
-          o.game_id,
+          r.game_id,
           COALESCE(SUM(r.points), 0) AS total_points,
-          COUNT(DISTINCT o.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
-      FROM public."orderData" o
-      LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id
-      WHERE DATE(o.timestamp_created) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
-        AND o.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-      GROUP BY o.game_id
+      FROM public."rewardledger" r 
+      WHERE DATE(r.created_at) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
+        AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+      GROUP BY r.game_id
       ORDER BY total_points DESC;
     `)
 
@@ -640,7 +638,7 @@ export const getDailyLeaderboardData = async () => {
       total_orders: row.total_orders.toString(),
       total_gmv: row.total_gmv.toString(),
     }))
-
+    console.log("updateddata",updatedData)
     return {
       statusCode: 200,
       body: updatedData,
@@ -684,6 +682,7 @@ export const getWeeklyLeaderboardData = async () => {
     }
   }
 }
+
 export const getAllTimeLeaders = async () => {
   try {
     const leaderboardData: any = await prisma.$queryRaw`
@@ -694,14 +693,13 @@ export const getAllTimeLeaders = async () => {
       HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
   )
   SELECT
-      o.game_id,
+      r.game_id,
       COALESCE(SUM(r.points), 0) AS total_points,
-      COUNT(DISTINCT o.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+      COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
       COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv
-  FROM public."orderData" o
-  LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id
-  WHERE o.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-  GROUP BY o.game_id
+  FROM public."rewardledger" r 
+  WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+  GROUP BY r.game_id
   ORDER BY total_points DESC;
 `;
 
@@ -763,16 +761,15 @@ export const getLeaderboardByDate = async (date: string) => {
           HAVING BOOL_AND(order_status <> 'cancelled')
       )
       SELECT 
-          o.game_id,
+          r.game_id,
           COALESCE(SUM(r.points), 0) AS total_points,
-          COUNT(DISTINCT o.order_id)::BIGINT AS total_orders,
+          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           ${startDate}::DATE AS leaderboard_day_start
-      FROM public."orderData" o
-      LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id
-      WHERE DATE(o.timestamp_created) = ${startDate}::DATE
-        AND o.order_id IN (SELECT order_id FROM valid_orders)
-      GROUP BY o.game_id
+      FROM public."rewardledger" r
+      WHERE DATE(r.created_at) = ${startDate}::DATE
+        AND r.order_id IN (SELECT order_id FROM valid_orders)
+      GROUP BY r.game_id
       ORDER BY total_points DESC;
     `
 
@@ -815,17 +812,16 @@ export const fetchLeaderboardForWeek = async (date: string) => {
           HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
       )
       SELECT
-          o.game_id,
+          r.game_id,
           COALESCE(SUM(r.points), 0) AS total_points,
-          COUNT(DISTINCT o.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           ${currentWeekStartStr}::DATE AS leaderboard_week_start
-      FROM public."orderData" o
-      LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id
-      WHERE DATE(o.timestamp_created) >= ${currentWeekStartStr}::DATE
-        AND DATE(o.timestamp_created) < ${endDateStr}::DATE
-        AND o.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-      GROUP BY o.game_id
+      FROM public."rewardledger" r 
+      WHERE DATE(r.created_at) >= ${currentWeekStartStr}::DATE
+        AND DATE(r.created_at) < ${endDateStr}::DATE
+        AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+      GROUP BY r.game_id
       ORDER BY total_points DESC;
     `
 
