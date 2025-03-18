@@ -635,10 +635,10 @@ const processCancellations = async (cancellations: any) => {
         const ifBeenAWinner = await prisma.dailyWinner.findMany({
           where: {
             AND: [{ game_id: originalOrder?.game_id }, { winning_date: originalOrder?.timestamp_created }],
-          },
-        })
+          }
+        });
         console.log("ifBeenAWinner", ifBeenAWinner)
-
+        
         // now check how many points to be deducted
 
         // now i need to check if canceledOrderCount = 1 ? -150 points
@@ -773,14 +773,14 @@ const processCancellations = async (cancellations: any) => {
             originalGmv,
             orderId,
           )
-          
 
           pointsAdjustment = newPoints - originalPoints // 110 - 210 = -110
+          const gmvAdjustment = originalGmv - newGmv
           rewardledgerUpdate(
             gameId,
             orderId,
-            -newGmv,
-            `-${pointsAdjustment}` as unknown as number,
+            gmvAdjustment,
+            pointsAdjustment,
             "Adjusted GMV & Points",
             false,
             timestampCreated,
@@ -1075,6 +1075,7 @@ const calculatePoints = async (
       return points + 50
     }
 
+    console.log("here in partial")
     return points
   } else {
     points += 10
