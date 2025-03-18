@@ -12,7 +12,7 @@ orderRouter.get("/create/leaderboard", orderController.createOrRefreshLeaderboar
 orderRouter.get("/create/week-leaderboard", orderController.createOrRefreshWeeklyLeaderboardView)
 orderRouter.get("/week-leaderboard", orderController.getWeeklyLeaderboardData)
 orderRouter.get("/month-leaderboard", orderController.getMonthlyLeaderboardData)
-orderRouter.get('/alltime-leaderboard', orderController.getAllTimeLeaderboardData)
+orderRouter.get("/alltime-leaderboard", orderController.getAllTimeLeaderboardData)
 orderRouter.get("/daily-leaderboard", orderController.getDailyLeaderboardData)
 orderRouter.get("/create/month-leaderboard", orderController.createOrRefreshMonthlyLeaderboardView)
 orderRouter.get("/view/leaderboard", orderController.fetchLeaderboardData)
