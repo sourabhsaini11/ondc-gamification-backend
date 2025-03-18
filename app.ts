@@ -1,6 +1,6 @@
 import "dotenv/config"
 import express, { Application, Request, Response, NextFunction } from "express"
-import helmet from "helmet"
+// import helmet from "helmet"
 import cors from "cors"
 // import pg from "pg"
 import HttpException, { sanitize } from "./shared/http-exception"
@@ -12,8 +12,18 @@ import { aggregatePointsCron } from "./services/cron.service"
 
 const createServer = (): express.Application => {
   const app: Application = express()
-  app.use(helmet({ crossOriginResourcePolicy: false }))
-  app.use(cors({ origin: "*" }))
+  // app.use(helmet({ crossOriginResourcePolicy: false }))
+  app.options("*", cors())
+  const corsOptions = {
+    origin: "*", // Replace with your frontend domain
+    methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+    allowedHeaders: "*",
+    optionsSuccessStatus: 204,
+  }
+
+  // Use CORS middleware
+  app.use(cors(corsOptions))
+  // app.use(cors())
   app.use(express.json())
   app.use(express.urlencoded({ extended: true }))
   app.use("/api/v1/users", userRouter)

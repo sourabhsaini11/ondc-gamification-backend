@@ -1,5 +1,11 @@
 import { Request, Response } from "express"
-import { parseAndStoreCsv, getUserOrders, getOrders, getUserOrdersForCSV } from "../../services"
+import {
+  parseAndStoreCsv,
+  getUserOrders,
+  // getOrders,
+  getUserOrdersForCSV,
+  aggregateDailyGmvAndPoints,
+} from "../../services"
 import {
   aggregatePointsSummary,
   createOrRefreshLeaderboardView,
@@ -82,7 +88,7 @@ const orderController = {
   getOrders: async (_req: Request, res: Response): Promise<Response> => {
     try {
       console.log("_req", _req)
-      const orders = await getOrders()
+      const orders = await aggregateDailyGmvAndPoints()
       console.log("orders", JSON.stringify(orders))
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
@@ -126,8 +132,8 @@ const orderController = {
 
   getWeeklyLeaderboardData: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      const {date} = _req.query
-      
+      const { date } = _req.query
+
       const orders = date ? await fetchLeaderboardForWeek(date as any) : await getWeeklyLeaderboardData()
 
       return res.status(200).json({ success: true, data: orders })
@@ -150,7 +156,7 @@ const orderController = {
 
   getDailyLeaderboardData: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      const {date} = _req.query
+      const { date } = _req.query
       const orders = date ? await getLeaderboardByDate(date as any) : await getDailyLeaderboardData()
 
       return res.status(200).json({ success: true, data: orders })
@@ -218,9 +224,6 @@ const orderController = {
       return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
- 
-
-  
 }
 
 export default orderController

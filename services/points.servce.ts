@@ -16,7 +16,6 @@ export const aggregatePointsSummary = async () => {
 
     // Upsert aggregated data into leaderboard
     for (const { game_id, total_points, total_orders, total_gmv } of aggregatedData) {
-      console.log("game_id, total_points, total_orders, total_gmv", game_id, total_points, total_orders, total_gmv)
       const data = {
         game_id,
         total_points: Number(total_points),
@@ -753,6 +752,7 @@ export const getMonthlyLeaderboardData = async () => {
     }
   }
 }
+
 export const getLeaderboardByDate = async (date: string) => {
   try {
     const startDate = new Date(date).toISOString().split("T")[0]
@@ -849,6 +849,7 @@ export const fetchLeaderboardForWeek = async (date: string) => {
     }
   }
 }
+
 export const fetchLeaderboardData = async () => {
   try {
     const leaderboardData = await prisma.$queryRaw`
