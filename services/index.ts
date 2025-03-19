@@ -635,10 +635,10 @@ const processCancellations = async (cancellations: any) => {
         const ifBeenAWinner = await prisma.dailyWinner.findMany({
           where: {
             AND: [{ game_id: originalOrder?.game_id }, { winning_date: originalOrder?.timestamp_created }],
-          }
-        });
+          },
+        })
         console.log("ifBeenAWinner", ifBeenAWinner)
-        
+
         // now check how many points to be deducted
 
         // now i need to check if canceledOrderCount = 1 ? -150 points
@@ -1057,7 +1057,8 @@ const calculatePoints = async (
   let points = 0
   const gmvPoints = Math.floor(gmv / 10)
   points += gmvPoints
-  
+  points += 10
+
   if (condition === "partial") {
     // await rewardledgerUpdate(game_id, orderId, 0, -10.0, "base Points deducted for part cancel ", true)
     // await rewardledgerUpdate(
@@ -1078,7 +1079,6 @@ const calculatePoints = async (
     console.log("here in partial")
     return points
   } else {
-    points += 10
     await rewardledgerUpdate(game_id, orderId, 0, +10.0, "base Points awarded for the order ", true, timestamp)
     // await rewardledgerUpdate(
     //   game_id,
@@ -1606,7 +1606,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
     }))
 
     const insertedData = await prisma.orderData.createMany({ data: formattedData })
-    console.log('The inserted Data is: ', insertedData)
+    console.log("The inserted Data is: ", insertedData)
     console.log(`Bulk data inserted successfully.`)
     // await prisma.$executeRawUnsafe(`SELECT update_leaderboard_manual()`)
   } catch (error) {
