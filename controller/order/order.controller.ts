@@ -5,6 +5,7 @@ import {
   // getOrders,
   getUserOrdersForCSV,
   aggregateDailyGmvAndPoints,
+  search,
 } from "../../services"
 import {
   aggregatePointsSummary,
@@ -20,6 +21,8 @@ import {
   getWeeklyLeaderboardData,
   // leaderboardTrigger,
   rewardLedgerTrigger,
+  DayWinnerUpdate,
+  PointsAssignedforhighestGmv
 } from "../../services/points.servce"
 // import { logger } from "../../shared/logger"
 import { Parser } from "json2csv"
@@ -94,6 +97,32 @@ const orderController = {
     } catch (error) {
       console.error("❌ Error retrieving orders:", error)
       return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  },
+
+  search: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      console.log("Request Query Params:", req.query);
+
+      // Extract & validate query params
+      const { format, game_id } = req.query;
+
+      if (!format || !game_id) {
+        return res.status(400).json({ success: false, message: "Missing required parameters: format and game_id" });
+      }
+
+      if (typeof format !== "string" || typeof game_id !== "string") {
+        return res.status(400).json({ success: false, message: "Invalid parameter types" });
+      }
+
+      const Points = await search(game_id, format);
+
+      console.log("Points:", JSON.stringify(Points));
+
+      return res.status(200).json({ success: true, data: Points });
+    } catch (error) {
+      console.error("❌ Error retrieving orders:", error);
+      return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
   },
 
@@ -224,6 +253,28 @@ const orderController = {
       return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
+  highestGmvandOrder: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+      console.log("_req", _req)
+      console.log("highestGmvandOrder")
+      const orders = await PointsAssignedforhighestGmv()
+      return res.status(200).json({ success: true, data: orders })
+    } catch (error) {
+      console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  },
+  DayWinnerUpdate: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+      console.log("_req", _req)
+      console.log("DayWinnerUpdate")
+      const orders = await DayWinnerUpdate()
+      return res.status(200).json({ success: true, data: orders })
+    } catch (error) {
+      console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  }
 }
 
 export default orderController

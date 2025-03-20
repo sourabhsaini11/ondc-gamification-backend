@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client"
+import { rewardledgerUpdate } from "./index"
 // import moment from "moment"
 
 const prisma = new PrismaClient()
@@ -638,7 +639,7 @@ export const getDailyLeaderboardData = async () => {
       total_orders: row.total_orders.toString(),
       total_gmv: row.total_gmv.toString(),
     }))
-    console.log("updateddata",updatedData)
+    console.log("updateddata", updatedData)
     return {
       statusCode: 200,
       body: updatedData,
@@ -701,7 +702,7 @@ export const getAllTimeLeaders = async () => {
   WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
   GROUP BY r.game_id
   ORDER BY total_points DESC;
-`;
+`
 
     const updatedData = leaderboardData.map((row: any) => ({
       ...row,
@@ -722,6 +723,7 @@ export const getAllTimeLeaders = async () => {
     }
   }
 }
+
 export const getMonthlyLeaderboardData = async () => {
   try {
     const leaderboardData: any = await prisma.$queryRaw`
@@ -1199,5 +1201,148 @@ export const checkWeeklyWinnerCancellation = async () => {
     }
   } catch (error) {
     console.error("Error checking weekly winner cancellations:", error)
+  }
+}
+
+export const highestGmvandOrder = async () => {
+  try {
+    //Today Winner
+    const CurrentDayWinnerquery = `
+    WITH ranked_games_current_day AS (
+    SELECT 
+        game_id, 
+        COUNT(DISTINCT order_id) AS distinct_order_count,
+        (ARRAY_AGG(order_id ORDER BY created_at))[
+            array_length(ARRAY_AGG(order_id ORDER BY created_at), 1)
+        ] AS last_order_id,
+        DENSE_RANK() OVER (ORDER BY COUNT(DISTINCT order_id) DESC) AS rank,
+        'current_day' AS day_type
+    FROM rewardledger
+    WHERE DATE(created_at) = CURRENT_DATE
+    GROUP BY game_id
+)
+SELECT 
+    game_id, 
+    distinct_order_count, 
+    last_order_id, 
+    day_type
+FROM ranked_games_current_day
+WHERE rank <= 2;
+  `
+    //Previous day Updated top two position players for comparing because may be if someone has cancelled order here we will get update points 
+    const PreviousDayWinnerquery = `
+  WITH ranked_games_previous_day AS (
+    SELECT 
+        game_id, 
+        COUNT(DISTINCT order_id) AS distinct_order_count,
+        (ARRAY_AGG(order_id ORDER BY created_at))[
+            array_length(ARRAY_AGG(order_id ORDER BY created_at), 1)
+        ] AS last_order_id,
+        DENSE_RANK() OVER (ORDER BY COUNT(DISTINCT order_id) DESC) AS rank,
+        'previous_day' AS day_type
+    FROM rewardledger
+    WHERE DATE(created_at) = CURRENT_DATE - INTERVAL '1 day'
+    GROUP BY game_id
+)
+SELECT 
+    game_id, 
+    distinct_order_count, 
+    last_order_id, 
+    day_type
+FROM ranked_games_previous_day
+WHERE rank <= 2;
+  `
+    const CurrentDayResult: any = await prisma.$queryRawUnsafe(CurrentDayWinnerquery)
+
+    const PreviousDayResult: any = await prisma.$queryRawUnsafe(PreviousDayWinnerquery)
+
+
+    //getting the winner of previous day that was already stored in DailyWinner
+    const winnerStatus: any = await prisma.$queryRawUnsafe(`
+     SELECT game_id
+FROM dailyWinner
+WHERE winning_date >= CURRENT_DATE - INTERVAL '1 day' -- Start of the previous day
+  AND winning_date < CURRENT_DATE  and position=1 and type='daily' 
+      `)
+
+    if (winnerStatus.length > 0 && PreviousDayResult[0]?.game_id != winnerStatus[0]?.game_id) {
+      rewardledgerUpdate(
+        PreviousDayResult[0].game_id,
+        PreviousDayResult[0].last_order_id,
+        0,
+        -100,
+        "Count of highest order changed after a day",
+        false,
+        new Date(),
+      )
+      rewardledgerUpdate(
+        PreviousDayResult[1].game_id,
+        PreviousDayResult[1].last_order_id,
+        0,
+        100,
+        "Count of highest order changed after a day",
+        true,
+        new Date(),
+      )
+    }
+
+    rewardledgerUpdate(
+      CurrentDayResult[0].game_id,
+      CurrentDayResult[0].last_order_id,
+      0,
+      100,
+      "Points for highest order in a day",
+      true,
+      new Date(),
+    )
+
+    console.log("result", CurrentDayResult)
+  } catch (error: any) {
+    console.log("error", error)
+  }
+}
+
+export const PointsAssignedforhighestGmv = async () => {
+  try {
+    const highestGmvfordayquery = `
+    WITH gmv_summary AS (
+    SELECT 
+        game_id, 
+        SUM(gmv) / 2 AS half_gmv, -- Calculate sum of GMV and divide by 2
+        MAX(created_at) AS last_created_at, -- Get the latest created_at timestamp
+        (ARRAY_AGG(order_id ORDER BY created_at DESC))[1] AS last_order_id -- Get the last order_id
+    FROM rewardledger
+    WHERE DATE(created_at) = CURRENT_DATE -- Filter for the current day
+    GROUP BY game_id
+),
+ranked_gmv AS (
+    SELECT 
+        game_id, 
+        half_gmv, 
+        last_order_id, 
+        last_created_at,
+        DENSE_RANK() OVER (ORDER BY half_gmv DESC) AS rank -- Rank by half_gmv
+    FROM gmv_summary
+)
+SELECT 
+    game_id, 
+    half_gmv, 
+    last_order_id, 
+    last_created_at
+FROM ranked_gmv
+WHERE rank = 1; -- Select the row(s) with the maximum half_gmv
+    `
+    const result: any = await prisma.$executeRawUnsafe(highestGmvfordayquery)
+    await rewardledgerUpdate(
+      result[0].game_id,
+      result[0].last_order_id,
+      0,
+      100,
+      "highest Gmv for the day",
+      true,
+      result[0].last_created_at,
+    )
+  } catch (error) {
+    console.log(error)
   }
 }

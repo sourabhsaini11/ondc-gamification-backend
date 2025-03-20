@@ -30,6 +30,7 @@ export const parseAndStoreCsv = async (
   }[] = []
   // const uidFirstOrderTimestamp = new Map()
   const recordMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
+  const partialMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
   let rowCount = 0
   return new Promise((resolve, reject) => {
     fs.createReadStream(filePath)
@@ -117,6 +118,22 @@ export const parseAndStoreCsv = async (
             }
           }
 
+          if (String(normalizedRow["order_status"]).toLowerCase() == "partially_cancelled") {
+            const existingRecord = partialMap.get(orderId as string)
+            if (existingRecord) {
+              if (
+                existingRecord.orderStatus.toLowerCase() == "partially_cancelled" &&
+                String(normalizedRow["order_status"]).toLowerCase() == "partially_cancelled" &&
+                existingRecord.buyerAppId === String(userId)
+              ) {
+                return reject({
+                  success: false,
+                  message: `Duplicate Order ID: ${orderId} with status 'partially_cancelled' found multiple times for the same buyer at index:${rowCount}`,
+                })
+              }
+            }
+          }
+
           //async IIFE to fetch Userid
 
           const timestampStr: any = normalizedRow["timestamp_created"] // Example: "2025-02-24 2:00:00"
@@ -155,6 +172,10 @@ export const parseAndStoreCsv = async (
 
           // Store order_id with its order_status in Map
           recordMap.set(orderId as string, {
+            orderStatus: normalizedRow["order_status"] as string,
+            buyerAppId: normalizedRow["buyer_app_id"] as string,
+          })
+          partialMap.set(orderId as string, {
             orderStatus: normalizedRow["order_status"] as string,
             buyerAppId: normalizedRow["buyer_app_id"] as string,
           })
@@ -303,6 +324,43 @@ export const aggregateDailyGmvAndPoints = async () => {
     console.log("✅ Daily GMV and points aggregation completed.")
   } catch (error) {
     console.error("❌ Error aggregating daily GMV and points:", error)
+  }
+}
+
+export const search = async (game_id: string, format: string) => {
+  try {
+    console.log("Format:", format, "Game ID:", game_id)
+
+    const startDate = new Date()
+
+    if (format === "daily") {
+      startDate.setUTCHours(0, 0, 0, 0) // Start of the day UTC
+    } else if (format === "weekly") {
+      startDate.setUTCDate(startDate.getUTCDate() - 6)
+      startDate.setUTCHours(0, 0, 0, 0)
+    } else if (format === "monthly") {
+      startDate.setUTCDate(startDate.getUTCDate() - 30)
+      startDate.setUTCHours(0, 0, 0, 0)
+    } else {
+      throw new Error("Invalid format. Allowed values: 'daily', 'weekly', 'monthly'.")
+    }
+
+    // ✅ Ensure correct format for Prisma DateTime filter
+    console.log("Start Date Filter (UTC):", startDate.toISOString())
+
+    const totalPoints = await prisma.$queryRaw`
+  SELECT COALESCE(SUM(points), 0) AS total_points
+  FROM rewardledger
+  WHERE game_id = ${game_id}
+  AND created_at >= ${new Date(startDate).toISOString()}::timestamp AT TIME ZONE 'UTC'
+`;
+
+
+    console.log("Total Points Result:", totalPoints)
+    return totalPoints
+  } catch (error) {
+    console.error("Error in search function:", error)
+    throw error
   }
 }
 
@@ -1798,7 +1856,7 @@ $$ LANGUAGE plpgsql;
   }
 }
 
-const rewardledgerUpdate = async (
+export const rewardledgerUpdate = async (
   game_id: string,
   order_id: string,
   gmv: number,
