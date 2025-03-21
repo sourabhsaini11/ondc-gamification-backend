@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken"
 
 const SECRET_KEY = process.env.JWT_SECRET || "secret_key"
 
-interface AuthenticatedRequest extends Request {
+export interface AuthenticatedRequest extends Request {
   user?: any
 }
 

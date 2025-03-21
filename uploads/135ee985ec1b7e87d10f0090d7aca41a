@@ -1,0 +1,3 @@
+Name,Order ID,Order Status,Timestamp Created,Domain,Total Price,phone number
+user100,200-556-333,created,2025-03-21 12:01:00,RET10,0,829XXX9150
+user100,200-556-333,created,2025-03-21 12:01:00,RET10,2000,829XXX9150

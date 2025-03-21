@@ -7,6 +7,93 @@ import { logger } from "../shared/logger"
 // import dayjs from "dayjs"
 
 const prisma = new PrismaClient()
+export const findInvalidOrderStatus = (orders: any[]): { success: boolean; message?: string } => {
+  const validStatuses = new Set(["active", "created", "partially_cancelled", "cancelled"]);
+
+  for (const order of orders) {
+    if (!validStatuses.has(order.order_status)) {
+      return { success: false, message: `Invalid order_status = ${order.order_status} for order_id: ${order.order_id}`};
+    }
+  }
+
+  return { success: true };
+};
+export const findDuplicateOrderIdAndStatys = (orders: { order_id: string; order_status: string }[]) => {
+  const seen = new Set<string>();
+  for (const order of orders) {
+    const key = `${order.order_id}-${order.order_status}`;
+    if (seen.has(key)) {
+      return { success: false, message: `Duplicate found: Order ID ${order.order_id} with status ${order.order_status}` };
+    }
+    seen.add(key);
+  }
+  return { success: true, message: "No duplicates found" };
+};
+const validatePhoneNumbers = (orders: any[]): { success: boolean; message?: string } => {
+  const phoneRegex = /^\d{3}XXX\d{4}$/; // Expected format: 733XXX1892
+
+  for (const order of orders) {
+    const { order_id, uid : phone_number } = order;
+
+    if (!/^\d{10}$/.test(phone_number.replace(/X/g, "0"))) {
+      return { success: false, message: `Invalid phone number` };
+    }
+
+    if (!phoneRegex.test(phone_number)) {
+      return { success: false, message: `Masking of phone number not followed for order_id ${order_id}` };
+    }
+
+    if (/[^0-9X]/.test(phone_number)) {
+      return { success: false, message: `Invalid phone number format at order_id ${order_id}` };
+    }
+  }
+
+  return { success: true };
+};
+
+const validateTotalPrice = (orders: any[]): { success: boolean; message?: string } => {
+  for (const order of orders) {
+    const { order_id, total_price } = order;
+
+    if (typeof total_price !== "number" || isNaN(total_price) || /[^0-9.]/.test(total_price.toString())) {
+      return { success: false, message: `Invalid total price at order_id ${order_id}` };
+    }
+
+    if (total_price <= 0) {
+      return { success: false, message: `Issue with total price at order_id ${order_id}` };
+    }
+  }
+
+  return { success: true };
+};
+const validateOrderTimestamp = (orders: any[]): { success: boolean; message?: string } => {
+  const now = new Date();
+  const oneDayLater = new Date();
+  oneDayLater.setDate(now.getDate() + 1); // Allow timestamps up to 1 day in the future
+
+  for (const order of orders) {
+    const { order_id, timestamp_created:timestamp } = order;
+
+    // Try to parse the timestamp
+    const orderDate = new Date(timestamp);
+
+    // Check if the parsed date is invalid
+    if (isNaN(orderDate.getTime())) {
+      return { success: false, message: `timestamp error at order_id ${order_id}` };
+    }
+
+    // Ensure it's not more than 1 day in the future
+    if (orderDate > oneDayLater) {
+      return { success: false, message: `future timestamp error at order_id ${order_id}` };
+    }
+  }
+
+  return { success: true };
+};
+
+
+
+
 
 export const parseAndStoreCsv = async (
   filePath: string,
@@ -63,6 +150,7 @@ export const parseAndStoreCsv = async (
               return [normalizedKey, value]
             }),
           )
+          
           if (check) {
             console.error("Values can't be empty")
             return reject({
@@ -93,6 +181,7 @@ export const parseAndStoreCsv = async (
             console.error(`❌ Missing Fields: ${missingFields.join(", ")}`)
             return reject({ success: false, message: `Fields are missing: ${missingFields.join(", ")}` })
           }
+
 
           requiredFields.push("timestamp_updated")
 
@@ -133,6 +222,7 @@ export const parseAndStoreCsv = async (
               }
             }
           }
+          
 
           //async IIFE to fetch Userid
 
@@ -198,6 +288,7 @@ export const parseAndStoreCsv = async (
             return resolve({ success: false, message: "No valid records found in the CSV file" })
           }
 
+
           const newOrders: any = []
           const cancellations: any = []
 
@@ -209,6 +300,39 @@ export const parseAndStoreCsv = async (
               newOrders.push(row)
             }
           })
+          // checks for invalid timestamp
+          const isInvalidTimestamp = validateOrderTimestamp([...newOrders, ...cancellations])
+          if (!isInvalidTimestamp.success) {
+            return reject({ success: false, message: isInvalidTimestamp.message })
+          }
+          // check for invalid total_price
+          const isInvalidTotalPrice = validateTotalPrice([...newOrders, ...cancellations])
+          if (!isInvalidTotalPrice.success) {
+            return reject({ success: false, message: isInvalidTotalPrice.message })
+          }
+          // check for invalid phone_number
+          const isInvalidPhoneNumber = validatePhoneNumbers([...newOrders, ...cancellations])
+          if (!isInvalidPhoneNumber.success) {
+            return reject({ success: false, message: isInvalidPhoneNumber.message })
+          }
+          // check for invalid order_status
+          const isInvalidOrderStatus : any = findInvalidOrderStatus([...newOrders, ...cancellations])
+          if(!isInvalidOrderStatus.success){
+            return reject({ success: false, message: isInvalidOrderStatus.message})
+          }
+          // check for duplicate order id for same status
+          const isDuplicateNewOrder = findDuplicateOrderIdAndStatys(newOrders)
+          const isDuplicateCancellation = findDuplicateOrderIdAndStatys(cancellations)
+          if(!isDuplicateNewOrder.success){
+            return reject({ success: false, message: isDuplicateNewOrder.message}) 
+
+          }
+          if(!isDuplicateCancellation.success){
+            return reject({ success: false, message: isDuplicateCancellation.message}) 
+
+          }
+          
+          
 
           // await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" DISABLE TRIGGER rewardledger_trigger;`)
 
@@ -218,8 +342,14 @@ export const parseAndStoreCsv = async (
           }
 
           if (cancellations.length > 0) {
-            const processedCancelOrders = await processCancellations(cancellations)
-            await bulkInsertDataIntoDb(processedCancelOrders)
+            try {
+              const processedCancelOrders = await processCancellations(cancellations)
+              console.log("processedCancelOrders", processedCancelOrders)
+             await bulkInsertDataIntoDb(processedCancelOrders)
+            } catch (error:any) {
+              console.log('Got Error in Cancellation', error)
+              throw new Error(error.message)
+            }
           }
 
           // await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" ENABLE TRIGGER rewardledger_trigger;`)
@@ -231,9 +361,9 @@ export const parseAndStoreCsv = async (
 
           console.log("✅ CSV data stored successfully")
           resolve({ success: true, message: "CSV data stored successfully" })
-        } catch (error) {
+        } catch (error : any) {
           console.error("❌ Error storing CSV data:", error)
-          reject({ success: false, message: "Error storing CSV data: " + error })
+          reject({ success: false, message: "Error storing CSV data: " + error.message })
         } finally {
           fs.unlinkSync(filePath)
           await prisma.$disconnect()
@@ -349,11 +479,13 @@ export const search = async (game_id: string, format: string) => {
     console.log("Start Date Filter (UTC):", startDate.toISOString())
 
     const totalPoints = await prisma.$queryRaw`
-  SELECT COALESCE(SUM(points), 0) AS total_points
+  SELECT COALESCE(SUM(points), 0) AS total_points, game_id
   FROM rewardledger
-  WHERE game_id = ${game_id}
+  WHERE game_id LIKE ${game_id} || '%'
   AND created_at >= ${new Date(startDate).toISOString()}::timestamp AT TIME ZONE 'UTC'
+  GROUP BY game_id
 `;
+
 
 
     console.log("Total Points Result:", totalPoints)
@@ -674,6 +806,8 @@ const processCancellations = async (cancellations: any) => {
             timestamp_created: "desc",
           },
         })
+
+        
         // above is getting the number of order_id with not status of cancelled
 
         // underline is getting the number of uid with order status of cancelled
@@ -724,7 +858,7 @@ const processCancellations = async (cancellations: any) => {
 
         if (!originalOrder) {
           console.log(`Original order not found for cancellation: ${orderId}`)
-          return
+          throw new Error(`Original order not found for cancellation: ${orderId}`)
         }
 
         const {
@@ -885,14 +1019,15 @@ const processCancellations = async (cancellations: any) => {
         })
       } catch (err) {
         console.error(`Error processing cancellation for order ${row.order_id}: ${err}`)
-        continue
+        throw Error(`Error processing cancellation for order ${row.order_id}: ${err}`)
+        // continue
       }
     }
 
     return processedData
-  } catch (err) {
-    console.error(`Error processing cancellations: ${err}`)
-    return []
+  } catch (err:any ) {
+    console.error(`Error processing cancellations11111: ${err}`)
+   throw new Error(err.message)
   }
 }
 
