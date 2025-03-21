@@ -1,17 +1,20 @@
 import { Request, Response } from "express"
 import { parseAndStoreCsv, getOrders } from "../services"
 import { aggregatePointsSummary, createOrRefreshLeaderboardView, fetchLeaderboardData } from "../services/points.servce"
+import { AuthenticatedRequest } from "middleware/auth.middleware"
 // import { logger } from "../../shared/logger"
 
 const csvController = {
   uploadCsv: async (req: Request, res: Response): Promise<Response> => {
+    const _req = req as AuthenticatedRequest
+    console.log("_req", _req.user)
     try {
       if (!req.file) {
         return res.status(400).json({ success: false, message: "No file uploaded" })
       }
 
       const filePath = req.file.path
-      const result = await parseAndStoreCsv(filePath, req.user?.userId || 1)
+      const result = await parseAndStoreCsv(filePath, _req.user?.userId || 1)
 
       if (!result.success) {
         return res.status(400).json({ success: false, message: result.message })
