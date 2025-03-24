@@ -911,7 +911,7 @@ const processCancellations = async (cancellations: any) => {
 
         if (!originalOrder) {
           console.log(`Original order not found for cancellation: ${orderId}`)
-          throw new Error(`Original order not found for cancellation: ${orderId}`)
+          throw new Error(`status not active : ${orderId} `)
         }
 
         const {
@@ -1915,132 +1915,13 @@ export const getUserOrdersForCSV = async (userId: number) => {
   }
 }
 
-export const rewardLedgerTrigger = async () => {
+export const rewardledger = async () => {
   try {
-    console.log("🔄 Setting up rewardledger trigger...")
-
-    // Create or replace the function
-    const res = await prisma.$executeRawUnsafe(`
-  CREATE OR REPLACE FUNCTION rewardledger_function()
-RETURNS TRIGGER AS $$
-DECLARE
-    order_count INT;
-    streak_days INT;
-    streak_bonus INT;
-    order_points DECIMAL;
-    streakBonuses JSONB;
-    current_game_id TEXT;
-    current_order_count INT;
-    last_order_date DATE;
-    is_cancelled BOOLEAN;
-BEGIN
-    -- Streak bonuses map for consecutive days
-    streakBonuses := '{"3": 20, "7": 30, "10": 100, "14": 200, "21": 500, "28": 700}';
-
-    -- Get the game_id and order status for the current order
-    current_game_id := NEW.game_id;
-    is_cancelled := NEW.order_status = 'cancelled';  -- Only fully cancelled orders deduct points
-
-    -- Create a temporary table to store RepeatOrderCount data
-    CREATE TEMP TABLE IF NOT EXISTS RepeatOrderCount (
-        game_id TEXT,
-        order_id TEXT,
-        timestamp_created DATE,
-        count INT
-    ) ON COMMIT DROP;
-
-    -- Check if game_id and timestamp_created exist in RepeatOrderCount
-    SELECT count
-    INTO current_order_count
-    FROM RepeatOrderCount
-    WHERE game_id = current_game_id
-      AND timestamp_created = DATE(NEW.timestamp_created);
-
-    IF FOUND THEN
-        -- Increment the count for repeat orders on the same day
-        UPDATE RepeatOrderCount
-        SET count = count + 1
-        WHERE game_id = current_game_id
-          AND timestamp_created = DATE(NEW.timestamp_created);
-
-        -- Get the new order count for this game_id and day
-        SELECT count INTO order_count
-        FROM RepeatOrderCount
-        WHERE game_id = current_game_id
-          AND timestamp_created = DATE(NEW.timestamp_created);
-
-        -- Calculate order points (order_count * 5 points)
-        order_points := order_count * 5;
-    ELSE
-        -- Create a new entry for this game_id and timestamp_created if not found
-        INSERT INTO RepeatOrderCount (game_id, order_id, timestamp_created, count)
-        VALUES (current_game_id, NEW.order_id, DATE(NEW.timestamp_created), 1);
-
-        -- Assign points for the first order on this day
-        order_points := 5;
-    END IF;
-
-    -- Insert into rewardledger for the current order
-    IF is_cancelled THEN
-        -- Deduct points for the cancelled order
-        INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
-        VALUES (NEW.order_id, current_game_id, -order_points, 'Order cancelled - points deducted', NOW());
-    ELSE
-        -- Insert into rewardledger for the current order
-        INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
-        VALUES (NEW.order_id, current_game_id, order_points, 'Order placed - points assigned based on order count', NOW());
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
-
-            streak_bonus := (streakBonuses ->> '3')::INT;
-        END IF;
-    END IF;
-
-    -- Ensure daily order points are always inserted
-    INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
-    VALUES 
-        (NEW.order_id, NEW.game_id, order_points, 'Daily order points', NOW()),
-        (NEW.order_id, NEW.game_id, gmv_points, 'GMV-based bonus', NOW());
-
-    -- Insert high-value bonus if applicable
-    IF high_value_bonus > 0 THEN
-        INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
-        VALUES (NEW.order_id, NEW.game_id, high_value_bonus, 'High GMV order bonus', NOW());
-    END IF;
-
-    -- Insert streak bonus if applicable
-    IF streak_bonus > 0 THEN
-        INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
-        VALUES (NEW.order_id, NEW.game_id, streak_bonus, 'Streak bonus - consecutive orders', NOW());
-    END IF;
-
-    RAISE NOTICE 'Rewards added for order_id %: Order Points %, GMV Points %, High-Value Bonus %, Streak Bonus %', 
-        NEW.order_id, order_points, gmv_points, high_value_bonus, streak_bonus;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-    `)
-
-    console.log("✅ RewardLedger trigger function created successfully!", res)
-
-    // Remove old rewardledger trigger if it exists
-    await prisma.$executeRawUnsafe(`
-      DROP TRIGGER IF EXISTS trigger_reward_ledger ON "orderData";
-    `)
-    console.log("🔄 Old rewardledger trigger removed (if it existed).")
-
-    // Create the new rewardledger trigger
-    await prisma.$executeRawUnsafe(`
-      CREATE TRIGGER rewardledger_trigger
-      AFTER INSERT OR UPDATE OR DELETE ON "orderData"
-      FOR EACH ROW
-      EXECUTE FUNCTION rewardledger_function();
-    `)
-    console.log("✅ New rewardledger trigger created successfully.")
+    const data = await prisma.rewardLedger.findMany()
+    return { data }
   } catch (error) {
     console.error("❌ Error setting up rewardledger trigger:", error)
+    throw new Error("Failed to fetch rewardledger")
   }
 }
 

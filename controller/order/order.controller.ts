@@ -3,6 +3,7 @@ import {
   parseAndStoreCsv,
   getUserOrders,
   // getOrders,
+  rewardledger,
   getUserOrdersForCSV,
   aggregateDailyGmvAndPoints,
   search,
@@ -96,6 +97,18 @@ const orderController = {
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
       console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  },
+
+  rewardledger: async (_req: Request, res: Response): Promise<Response> => {
+    try {   
+      console.log("_req", _req)
+      const ledger =  await rewardledger()
+      console.log("ledger", ledger)
+      return res.status(200).json({ success: true, data: ledger })
+    } catch (err) {
+      console.log(err)
       return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
