@@ -10,6 +10,9 @@ RUN apk add --no-cache python3 make g++
 # Copy package.json and package-lock.json
 COPY package.json package-lock.json ./
 RUN npm install --arch=x64 --platform=linux bcrypt
+COPY prisma ./prisma
+RUN npx prisma generate
+
 
 # Install dependencies
 RUN npm install
