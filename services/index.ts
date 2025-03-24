@@ -882,7 +882,7 @@ const processCancellations = async (cancellations: any) => {
             AND: [{ game_id: originalOrder?.game_id }, { winning_date: originalOrder?.timestamp_created }],
           },
         })
-        console.log("ifBeenAWinner", ifBeenAWinner)
+        console.log( "ifBeenAWinner", ifBeenAWinner)
 
         // now check how many points to be deducted
 
@@ -911,7 +911,7 @@ const processCancellations = async (cancellations: any) => {
 
         if (!originalOrder) {
           console.log(`Original order not found for cancellation: ${orderId}`)
-          throw new Error(`status not active : ${orderId} `)
+          throw new Error(`Original order not found for cancellation: ${orderId}`)
         }
 
         const {
