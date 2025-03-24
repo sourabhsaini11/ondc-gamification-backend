@@ -63,7 +63,7 @@ const orderController = {
         "game_id",
         "order_id",
         "name",
-        "domain",
+        // "domain",
         "buyer_app_id",
         "total_price",
         // "shipping_charges",
