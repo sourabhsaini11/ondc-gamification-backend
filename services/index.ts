@@ -29,7 +29,6 @@ export const findDuplicateOrderIdAndStatys = (orders: { order_id: string; order_
         message: `Duplicate found: Order ID ${order.order_id} with status ${order.order_status}`,
       }
     }
-
     seen.add(key)
   }
 
@@ -1322,6 +1321,20 @@ const calculatePoints = async (
       return points + 50
     }
 
+    if (originalGmv > 1000 && gmv > 1000) {
+      //if after partial cancellation gmv is still greater than 1000
+      await rewardledgerUpdate(
+        game_id,
+        orderId,
+        0,
+        50.0,
+        "bonus points for GMV > 1000 after partial Cancellation ",
+        true,
+        timestamp,
+      )
+      return points + 50
+    }
+
     console.log("here in partial")
     return points
   } else {
@@ -1830,7 +1843,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
       timestamp_created: row.timestamp_created,
       timestamp_updated: row.timestamp_updated,
       // domain: row.domain,
-      buyer_app_id: row.buyer_app_id,
+      // buyer_app_id: row.buyer_app_id,
       total_price: parseFloat(row.total_price || 0),
       // shipping_charges: parseFloat(row.shipping_charges || 0),
       // taxes: parseFloat(row.taxes || 0),

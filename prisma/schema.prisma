@@ -22,8 +22,13 @@ model OrderData {
   order_status           String   @default("Pending")
   timestamp_created      DateTime @default(now())
   timestamp_updated      DateTime @default(now())
+<<<<<<< Updated upstream
   // domain               String   @default("")
   buyer_app_id           String   @default("")
+=======
+ // domain               String   @default("")
+  //buyer_app_id           String   @default("")
+>>>>>>> Stashed changes
   total_price             Float    @default(0.00)
   // shipping_charges       Float    @default(0.00)
   // taxes                  Float    @default(0.00)
