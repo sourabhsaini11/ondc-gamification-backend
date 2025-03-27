@@ -1970,6 +1970,16 @@ export const rewardledger = async () => {
   }
 }
 
+export const rewardledgertesting = async () => {
+  try {
+    const data = await prisma.rewardLedgerTesting.findMany()
+    return { data }
+  } catch (error) {
+    console.error("❌ Error setting up rewardledger trigger:", error)
+    throw new Error("Failed to fetch rewardledger")
+  }
+}
+
 export const rewardledgerUpdate = async (
   game_id: string,
   order_id: string,
