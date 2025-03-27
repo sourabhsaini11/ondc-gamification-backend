@@ -135,9 +135,23 @@ export const parseAndStoreCsv = async (
 
     existingOrdersMap.get(order_id)?.add(order_status)
   })
+
+  const existingOrders = await prisma.orderData.findMany({
+    select: { order_id: true, order_status: true },
+  })
+  const existingOrdersMap2 = new Map()
+  existingOrders.forEach(({ order_id, order_status }) => {
+    if (!existingOrdersMap2.has(order_id)) {
+      existingOrdersMap2.set(order_id, new Set())
+    }
+
+    existingOrdersMap2.get(order_id).add(order_status)
+  })
+
   return new Promise((resolve, reject) => {
-    fs.createReadStream(filePath)
-      .pipe(csvParser())
+    let shouldAbort = false
+    const stream = fs.createReadStream(filePath).pipe(csvParser())
+    stream
       .on("data", (row) => {
         try {
           rowCount++
@@ -276,22 +290,33 @@ export const parseAndStoreCsv = async (
           //   }
           // }
 
-          ;(async () => {
-            const duplicateOrder = await prisma.orderData.findFirst({
-              where: {
-                order_id: orderId,
-                order_status: orderStatus,
-                // buyer_app_id: String(userId),
-              },
-            })
+          // ;(async () => {
+          //   const duplicateOrder = await prisma.orderData.findFirst({
+          //     where: {
+          //       order_id: orderId,
+          //       order_status: orderStatus,
+          //       // buyer_app_id: String(userId),
+          //     },
+          //   })
 
-            if (duplicateOrder) {
-              return reject({
-                success: false,
-                message: `Duplicate order status: ${orderStatus} at index:${rowCount}`,
-              })
-            }
-          })()
+          //   if (duplicateOrder) {
+          //     shouldAbort = true;
+          //     stream.destroy()
+          //     return reject({
+          //       success: false,
+          //       message: `Duplicate order ${orderId} (${orderStatus}) at row ${rowCount}`,
+          //       duplicateOrder, // Optional: include the duplicate record
+          //     })
+          //   }
+          // })()
+          if (existingOrdersMap2.has(orderId) && existingOrdersMap2.get(orderId).has(orderStatus)) {
+            shouldAbort = true
+            stream.destroy()
+            return reject({
+              success: false,
+              message: `Order ${orderId} (${orderStatus}) already exists in database`,
+            })
+          }
 
           // if (
           //   !recordMap.has(orderId as string) ||
@@ -332,12 +357,16 @@ export const parseAndStoreCsv = async (
           // records.filter((order)=>ordersExist.includes(order.))
           // console.log("records", records)
         } catch (error: any) {
-          console.error("❌ Error processing row:", error)
-          return reject({ success: false, message: error })
+          stream.destroy()
+          return reject({ success: false, message: error.message })
+          // console.error("❌ Error processing row:", error)
+          // return reject({ success: false, message: error })
         }
       })
       .on("end", async () => {
         try {
+          if (shouldAbort) return
+
           if (records.length === 0) {
             console.log("⚠️ No valid records found in the CSV file")
             return resolve({ success: false, message: "No valid records found in the CSV file" })
@@ -881,7 +910,7 @@ const processCancellations = async (cancellations: any) => {
             AND: [{ game_id: originalOrder?.game_id }, { winning_date: originalOrder?.timestamp_created }],
           },
         })
-        console.log( "ifBeenAWinner", ifBeenAWinner)
+        console.log("ifBeenAWinner", ifBeenAWinner)
 
         // now check how many points to be deducted
 
