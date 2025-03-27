@@ -1350,19 +1350,19 @@ const calculatePoints = async (
       return points + 50
     }
 
-    if (originalGmv > 1000 && gmv > 1000) {
-      //if after partial cancellation gmv is still greater than 1000
-      await rewardledgerUpdate(
-        game_id,
-        orderId,
-        0,
-        50.0,
-        "bonus points for GMV > 1000 after partial Cancellation ",
-        true,
-        timestamp,
-      )
-      return points + 50
-    }
+    // if (originalGmv > 1000 && gmv > 1000) {
+    //   //if after partial cancellation gmv is still greater than 1000
+    //   await rewardledgerUpdate(
+    //     game_id,
+    //     orderId,
+    //     0,
+    //     50.0,
+    //     "bonus points for GMV > 1000 after partial Cancellation ",
+    //     true,
+    //     timestamp,
+    //   )
+    //   return points + 50
+    // }
 
     console.log("here in partial")
     return points
