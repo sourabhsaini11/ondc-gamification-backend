@@ -109,7 +109,7 @@ export const parseAndStoreCsv = async (
     timestamp_created: Date
     timestamp_updated: Date
     // domain: any
-    buyer_app_id: any
+    // buyer_app_id: any
     total_price: number
     // shipping_charges: number
     // taxes: number
@@ -125,7 +125,7 @@ export const parseAndStoreCsv = async (
   const existingOrdersMap = new Map<OrderId, Set<OrderStatus>>()
   let rowCount = 0
   const orderRecords: { order_id: OrderId; order_status: OrderStatus }[] = await prisma.orderData.findMany({
-    select: { order_id: true, order_status: true, buyer_app_id: true },
+    select: { order_id: true, order_status: true },
   })
 
   orderRecords.forEach(({ order_id, order_status }) => {
@@ -281,7 +281,7 @@ export const parseAndStoreCsv = async (
               where: {
                 order_id: orderId,
                 order_status: orderStatus,
-                buyer_app_id: String(userId),
+                // buyer_app_id: String(userId),
               },
             })
 
@@ -306,7 +306,7 @@ export const parseAndStoreCsv = async (
             timestamp_created: timestampCreated,
             timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])) || timestampCreated, // timestamp_Updated update
             // domain: normalizedRow["domain"],
-            buyer_app_id: String(userId),
+            // buyer_app_id: String(userId),
             total_price: parseFloat(String(normalizedRow["total_price"])) || 0,
             // shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
             // taxes: parseFloat(String(normalizedRow["taxes"])) || 0,
