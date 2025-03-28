@@ -83,3 +83,16 @@ model DailyWinner {
 // then in DailyWinner search for the game_id 
 // 
 
+model RewardLedgerTesting {
+  id           Int    @id @default(autoincrement())
+order_id     String   @default("") 
+game_id      String   @default("")
+points      Decimal    @default(0.00)
+gmv      Decimal    @default(0.00)
+reason      String     @default("")
+order_status String    @default("") 
+order_timestamp_created DateTime @default(now())
+created_at DateTime @default(now())
+
+@@map("rewardledgertesting")
+}
