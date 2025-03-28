@@ -9,6 +9,7 @@ import {
   search,
   rewardledgertesting,
   db,
+  removetrigger,
 } from "../../services"
 import {
   aggregatePointsSummary,
@@ -131,6 +132,18 @@ const orderController = {
     try {   
       console.log("_req", _req)
       const ledger =  await rewardledgertesting()
+      console.log("ledger", ledger)
+      return res.status(200).json({ success: true, data: ledger })
+    } catch (err) {
+      console.log(err)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  },
+
+  removetrigger: async (_req: Request, res: Response): Promise<Response> => {
+    try {   
+      console.log("_req", _req)
+      const ledger =  await removetrigger()
       console.log("ledger", ledger)
       return res.status(200).json({ success: true, data: ledger })
     } catch (err) {

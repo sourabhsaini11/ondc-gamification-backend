@@ -1981,6 +1981,16 @@ export const db = async () => {
   }
 }
 
+export const removetrigger = async () => {
+  try {
+    const data = await await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS rewardTrigggered ON "orderData"`);
+    return { data }
+  } catch (error) {
+    console.error("❌ Error setting up rewardledger trigger:", error)
+    throw new Error("Failed to fetch rewardledger")
+  }
+}
+
 export const rewardledgertesting = async () => {
   try {
     const data = await prisma.rewardLedgerTesting.findMany()
