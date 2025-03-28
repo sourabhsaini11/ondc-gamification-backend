@@ -21,4 +21,5 @@ orderRouter.get("/uploads", authenticate, orderController.getUserUploads)
 orderRouter.get("/download-csv", authenticate, orderController.downloadCSV)
 orderRouter.get("/rewardledger", orderController.rewardledger)
 orderRouter.get("/rewardledgertesting", orderController.rewardledgertesting)
+orderRouter.get("/db", orderController.db)
 export default orderRouter

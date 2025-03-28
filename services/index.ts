@@ -888,6 +888,7 @@ const processCancellations = async (cancellations: any) => {
             timestamp_created: "desc",
           },
         })
+        console.log("originalOrder in cancellation", originalOrder)
 
         // above is getting the number of order_id with not status of cancelled
 
@@ -1963,6 +1964,16 @@ export const getUserOrdersForCSV = async (userId: number) => {
 export const rewardledger = async () => {
   try {
     const data = await prisma.rewardLedger.findMany()
+    return { data }
+  } catch (error) {
+    console.error("❌ Error setting up rewardledger trigger:", error)
+    throw new Error("Failed to fetch rewardledger")
+  }
+}
+
+export const db = async () => {
+  try {
+    const data = await prisma.orderData.findMany()
     return { data }
   } catch (error) {
     console.error("❌ Error setting up rewardledger trigger:", error)
