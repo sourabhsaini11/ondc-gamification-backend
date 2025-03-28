@@ -1870,7 +1870,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
 
   try {
     const formattedData = filteredData.map((row: any) => ({
-      // name: row.name,
+      // name: row.name, 
       order_id: row.order_id,
       order_status: row.order_status,
       timestamp_created: row.timestamp_created,
