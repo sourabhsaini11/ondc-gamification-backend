@@ -103,7 +103,7 @@ export const parseAndStoreCsv = async (
 ): Promise<{ success: boolean; message: string }> => {
   const records: {
     uid: any
-    name: any
+    // name: any
     order_id: any
     order_status: any
     timestamp_created: Date
@@ -191,7 +191,7 @@ export const parseAndStoreCsv = async (
 
           const requiredFields = [
             "phone_number",
-            "name",
+            // "name",
             "order_id",
             "order_status",
             "timestamp_created",
@@ -325,7 +325,7 @@ export const parseAndStoreCsv = async (
           // ) {
           records.push({
             uid: String(normalizedRow["phone_number"])?.trim(),
-            name: normalizedRow["name"],
+            // name: normalizedRow["name"],
             order_id: orderId,
             order_status: orderStatus,
             timestamp_created: timestampCreated,
@@ -1870,7 +1870,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
 
   try {
     const formattedData = filteredData.map((row: any) => ({
-      name: row.name,
+      // name: row.name,
       order_id: row.order_id,
       order_status: row.order_status,
       timestamp_created: row.timestamp_created,
