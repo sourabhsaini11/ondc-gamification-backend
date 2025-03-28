@@ -17,7 +17,7 @@ model User {
 model OrderData {
   id                     Int      @id @default(autoincrement())
   uid                    String   @default("")
-  name                   String
+//  name                   String
   order_id               String   @default("")
   order_status           String   @default("Pending")
   timestamp_created      DateTime @default(now())
