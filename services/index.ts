@@ -1349,8 +1349,7 @@ const calculatePoints = async (
     if (originalGmv > 1000 && gmv < 1000) {
       await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV < 1000 in partial cancellation ", true, timestamp)
       return points + 50
-    }
-    else {
+    } else {
       points += 50
     }
 
@@ -1870,7 +1869,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
 
   try {
     const formattedData = filteredData.map((row: any) => ({
-      // name: row.name, 
+      // name: row.name,
       order_id: row.order_id,
       order_status: row.order_status,
       timestamp_created: row.timestamp_created,
@@ -1983,7 +1982,7 @@ export const db = async () => {
 
 export const removetrigger = async () => {
   try {
-    const data = await await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS rewardTrigggered ON "orderData"`);
+    const data = await await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS rewardTrigggered ON "orderData"`)
     return { data }
   } catch (error) {
     console.error("❌ Error setting up rewardledger trigger:", error)
