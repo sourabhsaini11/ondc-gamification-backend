@@ -29,45 +29,39 @@ export const findDuplicateOrderIdAndStatys = (orders: { order_id: string; order_
         message: `Duplicate found: Order ID ${order.order_id} with status ${order.order_status}`,
       }
     }
+
     seen.add(key)
   }
 
   return { success: true, message: "No duplicates found" }
 }
 
-const validatePhoneNumbers = (orders: any[]): { success: boolean; message?: string } => {
+const validatePhoneNumber = (phone_number: any, index: number): { success: boolean; message?: string } => {
   const phoneRegex = /^\d{3}XXX\d{4}$/ // Expected format: 733XXX1892
 
-  for (const order of orders) {
-    const { order_id, uid: phone_number } = order
+  if (!/^\d{10}$/.test(phone_number.replace(/X/g, "0"))) {
+    return { success: false, message: `Invalid phone number at row: ${index}` }
+  }
 
-    if (!/^\d{10}$/.test(phone_number.replace(/X/g, "0"))) {
-      return { success: false, message: `Invalid phone number` }
-    }
+  if (!phoneRegex.test(phone_number)) {
+    return { success: false, message: `Masking of phone number not followed for row: ${index}` }
+  }
 
-    if (!phoneRegex.test(phone_number)) {
-      return { success: false, message: `Masking of phone number not followed for order_id ${order_id}` }
-    }
-
-    if (/[^0-9X]/.test(phone_number)) {
-      return { success: false, message: `Invalid phone number format at order_id ${order_id}` }
-    }
+  if (/[^0-9X]/.test(phone_number)) {
+    return { success: false, message: `Invalid phone number format at row: ${index}}` }
   }
 
   return { success: true }
 }
 
-const validateTotalPrice = (orders: any[]): { success: boolean; message?: string } => {
-  for (const order of orders) {
-    const { order_id, total_price } = order
+const validateTotalPrice = (total_price: any, index: number): { success: boolean; message?: string } => {
+  console.log("total_price", total_price)
+  if (typeof total_price !== "number" || isNaN(total_price) || /[^0-9.]/.test(total_price.toString())) {
+    return { success: false, message: `Invalid total price at row ${index}` }
+  }
 
-    if (typeof total_price !== "number" || isNaN(total_price) || /[^0-9.]/.test(total_price.toString())) {
-      return { success: false, message: `Invalid total price at order_id ${order_id}` }
-    }
-
-    if (total_price <= 0) {
-      return { success: false, message: `Issue with total price at order_id ${order_id}` }
-    }
+  if (total_price <= 0) {
+    return { success: false, message: `Issue with total price at row ${index}` }
   }
 
   return { success: true }
@@ -139,13 +133,13 @@ export const parseAndStoreCsv = async (
   const existingOrders = await prisma.orderData.findMany({
     select: { order_id: true, order_status: true },
   })
-  const existingOrdersMap2 = new Map()
+  const existingRows = new Map()
   existingOrders.forEach(({ order_id, order_status }) => {
-    if (!existingOrdersMap2.has(order_id)) {
-      existingOrdersMap2.set(order_id, new Set())
+    if (!existingRows.has(order_id)) {
+      existingRows.set(order_id, new Set())
     }
 
-    existingOrdersMap2.get(order_id).add(order_status)
+    existingRows.get(order_id).add(order_status)
   })
 
   return new Promise((resolve, reject) => {
@@ -161,6 +155,8 @@ export const parseAndStoreCsv = async (
 
           let check = false
           const emptyFields: string[] = []
+
+          // filter csv rows
           const normalizedRow = Object.fromEntries(
             Object.entries(row).map(([key, value]) => {
               const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, "_")
@@ -265,6 +261,7 @@ export const parseAndStoreCsv = async (
           //async IIFE to fetch Userid
 
           const timestampStr: any = normalizedRow["timestamp_created"] // Example: "2025-02-24 2:00:00"
+          const totalPrice: number = parseFloat(String(normalizedRow["total_price"]))
           const timestampCreated: Date = moment
             .tz(timestampStr, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata")
             .add(5, "hours")
@@ -274,6 +271,18 @@ export const parseAndStoreCsv = async (
           if (isNaN(timestampCreated.getTime())) {
             console.log(`Invalid timestamp for order ${orderId}`)
             return reject({ success: false, message: `Invalid timestamp for order ${orderId} at index:${rowCount}` })
+          }
+
+          // check for invalid total_price
+          const isInvalidTotalPrice = validateTotalPrice(totalPrice, rowCount)
+          if (!isInvalidTotalPrice.success) {
+            return reject({ success: false, message: isInvalidTotalPrice.message })
+          }
+
+          // check for invalid phone_number
+          const isInvalidPhoneNumber = validatePhoneNumber(normalizedRow["phone_number"], rowCount)
+          if (!isInvalidPhoneNumber.success) {
+            return reject({ success: false, message: isInvalidPhoneNumber.message })
           }
 
           // if (existingOrdersMap.has(orderId)) {
@@ -309,12 +318,12 @@ export const parseAndStoreCsv = async (
           //     })
           //   }
           // })()
-          if (existingOrdersMap2.has(orderId) && existingOrdersMap2.get(orderId).has(orderStatus)) {
+          if (existingRows.has(orderId) && existingRows.get(orderId).has(orderStatus)) {
             shouldAbort = true
             stream.destroy()
             return reject({
               success: false,
-              message: `Order ${orderId} (${orderStatus}) already exists in database`,
+              message: `Duplicate order status at row ${rowCount}`,
             })
           }
 
@@ -332,7 +341,7 @@ export const parseAndStoreCsv = async (
             timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])) || timestampCreated, // timestamp_Updated update
             // domain: normalizedRow["domain"],
             // buyer_app_id: String(userId),
-            total_price: parseFloat(String(normalizedRow["total_price"])) || 0,
+            total_price: totalPrice,
             // shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
             // taxes: parseFloat(String(normalizedRow["taxes"])) || 0,
             // discount: parseFloat(String(normalizedRow["discount"])) || 0,
@@ -387,18 +396,6 @@ export const parseAndStoreCsv = async (
           const isInvalidTimestamp = validateOrderTimestamp([...newOrders, ...cancellations])
           if (!isInvalidTimestamp.success) {
             return reject({ success: false, message: isInvalidTimestamp.message })
-          }
-
-          // check for invalid total_price
-          const isInvalidTotalPrice = validateTotalPrice([...newOrders, ...cancellations])
-          if (!isInvalidTotalPrice.success) {
-            return reject({ success: false, message: isInvalidTotalPrice.message })
-          }
-
-          // check for invalid phone_number
-          const isInvalidPhoneNumber = validatePhoneNumbers([...newOrders, ...cancellations])
-          if (!isInvalidPhoneNumber.success) {
-            return reject({ success: false, message: isInvalidPhoneNumber.message })
           }
 
           // check for invalid order_status
@@ -1101,7 +1098,7 @@ const processCancellations = async (cancellations: any) => {
         })
       } catch (err) {
         console.error(`Error processing cancellation for order ${row.order_id}: ${err}`)
-        throw Error(`Error processing cancellation for order ${row.order_id}: ${err}`)
+        throw Error(`Status not active at order: ${row.order_id}: ${err}`)
         // continue
       }
     }
