@@ -24,6 +24,6 @@ services:
       POSTGRES_DB: gamafication
     ports:
       - "5434:5432"
-    # volumes:
-      # - "/home/ubuntu/ALL_VOLUMES/gamafication-node-backend/postgres:/var/lib/postgresql/data"
+    volumes:
+      - "/home/ubuntu/ALL_VOLUMES/gamafication-node-backend/postgres:/var/lib/postgresql/data"
 
