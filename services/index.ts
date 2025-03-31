@@ -103,7 +103,7 @@ export const parseAndStoreCsv = async (
     timestamp_created: Date
     timestamp_updated: Date
     // domain: any
-    // buyer_app_id: any
+    buyer_app_id?: any
     total_price: number
     // shipping_charges: number
     // taxes: number
@@ -112,38 +112,55 @@ export const parseAndStoreCsv = async (
     uploaded_by: number
   }[] = []
   // const uidFirstOrderTimestamp = new Map()
-  type OrderId = string | number
-  type OrderStatus = string
+  // type OrderId = string | number
+  // type OrderStatus = string
   const recordMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
   const partialMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
-  const existingOrdersMap = new Map<OrderId, Set<OrderStatus>>()
+  // const existingOrders: { order_id: OrderId; order_status: OrderStatus; buyer_app_id: string }[] =
+  //   await prisma.orderData.findMany({
+  //     select: { order_id: true, order_status: true, buyer_app_id: true },
+  //   })
+  // const existingRows: { order_id: OrderId; order_status: OrderStatus; buyer_app_id: string }[] = existingOrders
+
+  // const existingOrdersMap: any = new Map<OrderId, Set<OrderStatus>>()
   let rowCount = 0
-  const orderRecords: { order_id: OrderId; order_status: OrderStatus }[] = await prisma.orderData.findMany({
-    select: { order_id: true, order_status: true },
-  })
+  // const orderRecords: { order_id: OrderId; order_status: OrderStatus; buyer_app_id: string }[] =
+  //   await prisma.orderData.findMany({
+  //     select: { order_id: true, order_status: true, buyer_app_id: true },
+  //   })
 
-  orderRecords.forEach(({ order_id, order_status }) => {
-    if (!existingOrdersMap.has(order_id)) {
-      existingOrdersMap.set(order_id, new Set())
-    }
+  // orderRecords.forEach(({ order_id, order_status, buyer_app_id }) => {
+  //   if (!existingOrdersMap.has(order_id)) {
+  //     existingOrdersMap.set(order_id, new Map())
+  //   }
 
-    existingOrdersMap.get(order_id)?.add(order_status)
-  })
+  //   const buyerMap: any = existingOrdersMap.get(order_id)
+  //   if (!buyerMap.has(buyer_app_id)) {
+  //     buyerMap.set(buyer_app_id, new Set())
+  //   }
 
-  const existingOrders = await prisma.orderData.findMany({
-    select: { order_id: true, order_status: true },
-  })
-  const existingRows = new Map()
-  existingOrders.forEach(({ order_id, order_status }) => {
-    if (!existingRows.has(order_id)) {
-      existingRows.set(order_id, new Set())
-    }
+  //   buyerMap.get(buyer_app_id)?.add(order_status)
+  // })
 
-    existingRows.get(order_id).add(order_status)
-  })
+  // const existingOrders = await prisma.orderData.findMany({
+  //   select: { order_id: true, order_status: true, buyer_app_id: true },
+  // })
+  // const existingRows = new Map()
+  // existingOrders.forEach(({ order_id, order_status, buyer_app_id }) => {
+  //   if (!existingRows.has(order_id)) {
+  //     existingRows.set(order_id, new Map())
+  //   }
+
+  //   const buyerMap = existingRows.get(order_id)
+  //   if (!buyerMap.has(buyer_app_id)) {
+  //     buyerMap.set(buyer_app_id, new Set())
+  //   }
+
+  //   buyerMap.get(buyer_app_id)?.add(order_status)
+  // })
 
   return new Promise((resolve, reject) => {
-    let shouldAbort = false
+    const shouldAbort = false
     const stream = fs.createReadStream(filePath).pipe(csvParser())
     stream
       .on("data", (row) => {
@@ -321,14 +338,16 @@ export const parseAndStoreCsv = async (
           //     })
           //   }
           // })()
-          if (existingRows.has(orderId) && existingRows.get(orderId).has(orderStatus)) {
-            shouldAbort = true
-            stream.destroy()
-            return reject({
-              success: false,
-              message: `Duplicate order status at row ${rowCount}`,
-            })
-          }
+
+          // const isDuplicate = isDuplicateOrder(orderId, orderStatus, String(userId))
+          // if (isDuplicate) {
+          //   shouldAbort = true
+          //   stream.destroy()
+          //   return reject({
+          //     success: false,
+          //     message: `Duplicate order status at row ${rowCount}`,
+          //   })
+          // }
 
           // if (
           //   !recordMap.has(orderId as string) ||
@@ -343,7 +362,7 @@ export const parseAndStoreCsv = async (
             timestamp_created: timestampCreated,
             timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])) || timestampCreated, // timestamp_Updated update
             // domain: normalizedRow["domain"],
-            // buyer_app_id: String(userId),
+            buyer_app_id: String(userId),
             total_price: totalPrice,
             // shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
             // taxes: parseFloat(String(normalizedRow["taxes"])) || 0,
@@ -351,6 +370,8 @@ export const parseAndStoreCsv = async (
             // convenience_fee: parseFloat(String(normalizedRow["conveniance_fee"])) || 0,
             uploaded_by: userId,
           })
+
+          console.log("records12", records)
 
           // Store order_id with its order_status in Map
           recordMap.set(orderId as string, {
@@ -369,6 +390,7 @@ export const parseAndStoreCsv = async (
           // records.filter((order)=>ordersExist.includes(order.))
           // console.log("records", records)
         } catch (error: any) {
+          console.log("error", error)
           stream.destroy()
           return reject({ success: false, message: error.message })
           // console.error("❌ Error processing row:", error)
@@ -380,8 +402,18 @@ export const parseAndStoreCsv = async (
           if (shouldAbort) return
 
           if (records.length === 0) {
+            console.log("recordsss", records)
             console.log("⚠️ No valid records found in the CSV file")
             return resolve({ success: false, message: "No valid records found in the CSV file" })
+          }
+
+          for (const row of records) {
+            if (await isDuplicateOrder(row.order_id, row.order_status, row.buyer_app_id)) {
+              return reject({
+                success: false,
+                message: `Duplicate order ${row.order_id} (${row.order_status}) at row ${rowCount}`,
+              })
+            }
           }
 
           const newOrders: any = []
@@ -1875,7 +1907,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
       timestamp_created: row.timestamp_created,
       timestamp_updated: row.timestamp_updated,
       // domain: row.domain,
-      // buyer_app_id: row.buyer_app_id,
+      buyer_app_id: row.buyer_app_id,
       total_price: parseFloat(row.total_price || 0),
       // shipping_charges: parseFloat(row.shipping_charges || 0),
       // taxes: parseFloat(row.taxes || 0),
@@ -2027,4 +2059,16 @@ export const rewardledgerUpdate = async (
   } catch (error) {
     console.log("error", error)
   }
+}
+
+export const isDuplicateOrder = async (orderId: string, orderStatus: any, buyerAppId: string) => {
+  const existingOrder = await prisma.orderData.findFirst({
+    where: {
+      order_id: orderId,
+      order_status: orderStatus,
+      buyer_app_id: buyerAppId,
+    },
+  })
+
+  return existingOrder !== null
 }

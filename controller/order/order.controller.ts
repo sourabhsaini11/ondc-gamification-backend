@@ -26,7 +26,7 @@ import {
   // leaderboardTrigger,
   rewardLedgerTrigger,
   DayWinnerUpdate,
-  PointsAssignedforhighestGmv
+  PointsAssignedforhighestGmv,
 } from "../../services/points.servce"
 // import { logger } from "../../shared/logger"
 import { Parser } from "json2csv"
@@ -103,9 +103,9 @@ const orderController = {
   },
 
   rewardledger: async (_req: Request, res: Response): Promise<Response> => {
-    try {   
+    try {
       console.log("_req", _req)
-      const ledger =  await rewardledger()
+      const ledger = await rewardledger()
       console.log("ledger", ledger)
       return res.status(200).json({ success: true, data: ledger })
     } catch (err) {
@@ -115,9 +115,9 @@ const orderController = {
   },
 
   db: async (_req: Request, res: Response): Promise<Response> => {
-    try {   
+    try {
       console.log("_req", _req)
-      const ledger =  await db()
+      const ledger = await db()
       console.log("ledger", ledger)
       return res.status(200).json({ success: true, data: ledger })
     } catch (err) {
@@ -127,9 +127,9 @@ const orderController = {
   },
 
   rewardledgertesting: async (_req: Request, res: Response): Promise<Response> => {
-    try {   
+    try {
       console.log("_req", _req)
-      const ledger =  await rewardledgertesting()
+      const ledger = await rewardledgertesting()
       console.log("ledger", ledger)
       return res.status(200).json({ success: true, data: ledger })
     } catch (err) {
@@ -139,9 +139,9 @@ const orderController = {
   },
 
   removetrigger: async (_req: Request, res: Response): Promise<Response> => {
-    try {   
+    try {
       console.log("_req", _req)
-      const ledger =  await removetrigger()
+      const ledger = await removetrigger()
       console.log("ledger", ledger)
       return res.status(200).json({ success: true, data: ledger })
     } catch (err) {
@@ -152,27 +152,27 @@ const orderController = {
 
   search: async (req: Request, res: Response): Promise<Response> => {
     try {
-      console.log("Request Query Params:", req.query);
+      console.log("Request Query Params:", req.query)
 
       // Extract & validate query params
-      const { format, game_id } = req.query;
+      const { format, game_id } = req.query
 
       if (!format || !game_id) {
-        return res.status(400).json({ success: false, message: "Missing required parameters: format and game_id" });
+        return res.status(400).json({ success: false, message: "Missing required parameters: format and game_id" })
       }
 
       if (typeof format !== "string" || typeof game_id !== "string") {
-        return res.status(400).json({ success: false, message: "Invalid parameter types" });
+        return res.status(400).json({ success: false, message: "Invalid parameter types" })
       }
 
-      const Points = await search(game_id, format);
+      const Points = await search(game_id, format)
 
-      console.log("Points:", JSON.stringify(Points));
+      console.log("Points:", JSON.stringify(Points))
 
-      return res.status(200).json({ success: true, data: Points });
+      return res.status(200).json({ success: true, data: Points })
     } catch (error) {
-      console.error("❌ Error retrieving orders:", error);
-      return res.status(500).json({ success: false, message: "Internal Server Error" });
+      console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
 
@@ -324,7 +324,7 @@ const orderController = {
       console.error("❌ Error retrieving orders:", error)
       return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
-  }
+  },
 }
 
 export default orderController
