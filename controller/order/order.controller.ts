@@ -66,9 +66,7 @@ const orderController = {
       const fields = [
         "game_id",
         "order_id",
-        "name",
         // "domain",
-        "buyer_app_id",
         "total_price",
         // "shipping_charges",
         // "taxes",

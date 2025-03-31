@@ -205,7 +205,10 @@ export const parseAndStoreCsv = async (
 
           if (missingFields.length > 0) {
             console.error(`❌ Missing Fields: ${missingFields.join(", ")}`)
-            return reject({ success: false, message: `Fields are missing: ${missingFields.join(", ")}` })
+            return reject({
+              success: false,
+              message: `mismatch for column name at column ${missingFields.join(", ")}`,
+            })
           }
 
           requiredFields.push("timestamp_updated")
