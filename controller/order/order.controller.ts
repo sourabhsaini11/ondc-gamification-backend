@@ -18,10 +18,13 @@ import {
   createOrRefreshWeeklyLeaderboardView,
   fetchLeaderboardData,
   fetchLeaderboardForWeek,
+  fetchLeaderboardForWeek2,
   getAllTimeLeaders,
   getDailyLeaderboardData,
   getLeaderboardByDate,
+  getLeaderboardByDate2,
   getMonthlyLeaderboardData,
+  getMonthlyLeaderboardData2,
   getWeeklyLeaderboardData,
   // leaderboardTrigger,
   rewardLedgerTrigger,
@@ -222,6 +225,19 @@ const orderController = {
     }
   },
 
+  getWeeklyLeaderboardData2: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+      const { date } = _req.query
+
+      const orders = date ? await fetchLeaderboardForWeek2(date as any) : await getWeeklyLeaderboardData()
+
+      return res.status(200).json({ success: true, data: orders })
+    } catch (error) {
+      console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  },
+
   createOrRefreshMonthlyLeaderboardView: async (_req: Request, res: Response): Promise<Response> => {
     try {
       console.log("_req", _req)
@@ -249,6 +265,29 @@ const orderController = {
     try {
       console.log("_req", _req)
       const orders = await getMonthlyLeaderboardData()
+      return res.status(200).json({ success: true, data: orders })
+    } catch (error) {
+      console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  },
+
+  getDailyLeaderboardData2: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+      const { date } = _req.query
+      const orders = date ? await getLeaderboardByDate2(date as any) : await getDailyLeaderboardData()
+
+      return res.status(200).json({ success: true, data: orders })
+    } catch (error) {
+      console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  },
+
+  getMonthlyLeaderboardData2: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+      console.log("_req", _req)
+      const orders = await getMonthlyLeaderboardData2()
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
       console.error("❌ Error retrieving orders:", error)

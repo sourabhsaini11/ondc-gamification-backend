@@ -1379,7 +1379,7 @@ const calculatePoints = async (
     // )
     // ? Why are we sending points + 50 in the case of originalGMV excedding 1000 & current GMV deceding 1000
     if (originalGmv > 1000 && gmv < 1000) {
-      await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV < 1000 in partial cancellation ", true, timestamp)
+      await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV < 1000 in partial cancellation", true, timestamp)
       return points + 50
     } else {
       points += 50

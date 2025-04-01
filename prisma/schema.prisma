@@ -84,7 +84,7 @@ model DailyWinner {
 // 
 
 model RewardLedgerTesting {
-  id           Int    @id @default(autoincrement())
+id           Int    @id @default(autoincrement())
 order_id     String   @default("") 
 game_id      String   @default("")
 points      Decimal    @default(0.00)

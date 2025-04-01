@@ -1229,7 +1229,7 @@ SELECT
 FROM ranked_games_current_day
 WHERE rank <= 2;
   `
-    //Previous day Updated top two position players for comparing because may be if someone has cancelled order here we will get update points 
+    //Previous day Updated top two position players for comparing because may be if someone has cancelled order here we will get update points
     const PreviousDayWinnerquery = `
   WITH ranked_games_previous_day AS (
     SELECT 
@@ -1255,7 +1255,6 @@ WHERE rank <= 2;
     const CurrentDayResult: any = await prisma.$queryRawUnsafe(CurrentDayWinnerquery)
 
     const PreviousDayResult: any = await prisma.$queryRawUnsafe(PreviousDayWinnerquery)
-
 
     //getting the winner of previous day that was already stored in DailyWinner
     const winnerStatus: any = await prisma.$queryRawUnsafe(`
@@ -1344,5 +1343,127 @@ WHERE rank = 1; -- Select the row(s) with the maximum half_gmv
     )
   } catch (error) {
     console.log(error)
+  }
+}
+
+export const fetchLeaderboardForWeek2 = async (date: string) => {
+  try {
+    const startDate = new Date(date)
+    const currentWeekStart = new Date(startDate)
+    currentWeekStart.setDate(startDate.getDate() - startDate.getDay() + (startDate.getDay() === 0 ? -6 : 1)) // Monday of the week
+    const currentWeekStartStr = currentWeekStart.toISOString().split("T")[0] // YYYY-MM-DD
+    const endDate = new Date(currentWeekStart)
+    endDate.setDate(currentWeekStart.getDate() + 7)
+    const endDateStr = endDate.toISOString().split("T")[0]
+
+    console.log(`Fetching leaderboard for the week starting: ${currentWeekStartStr}`)
+
+    const leaderboard: any = await prisma.$queryRaw`
+      WITH valid_orders AS (
+          SELECT order_id
+          FROM public."orderData"
+          GROUP BY order_id
+          HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
+      )
+      SELECT
+          r.game_id,
+          COALESCE(SUM(r.points), 0) AS total_points,
+          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+          COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
+          ${currentWeekStartStr}::DATE AS leaderboard_week_start
+      FROM public."rewardledgertesting" r 
+      WHERE DATE(r.created_at) >= ${currentWeekStartStr}::DATE
+        AND DATE(r.created_at) < ${endDateStr}::DATE
+        AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+      GROUP BY r.game_id
+      ORDER BY total_points DESC;
+    `
+
+    const formattedLeaderboard = leaderboard.map((entry: any) => ({
+      ...entry,
+      total_orders: Number(entry.total_orders),
+      total_gmv: Number(entry.total_gmv),
+    }))
+
+    return {
+      statusCode: 200,
+      body: formattedLeaderboard,
+    }
+  } catch (error) {
+    console.error("Error fetching weekly leaderboard:", error)
+    return {
+      statusCode: 500,
+      body: "Internal Server Error",
+    }
+  }
+}
+
+export const getLeaderboardByDate2 = async (date: string) => {
+  try {
+    const startDate = new Date(date).toISOString().split("T")[0]
+
+    const leaderboard: any = await prisma.$queryRaw`
+      WITH valid_orders AS (
+          SELECT order_id
+          FROM public."orderData"
+          GROUP BY order_id
+          HAVING BOOL_AND(order_status <> 'cancelled')
+      )
+      SELECT 
+          r.game_id,
+          COALESCE(SUM(r.points), 0) AS total_points,
+          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,
+          COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
+          ${startDate}::DATE AS leaderboard_day_start
+      FROM public."rewardledgertesting" r
+      WHERE DATE(r.created_at) = ${startDate}::DATE
+        AND r.order_id IN (SELECT order_id FROM valid_orders)
+      GROUP BY r.game_id
+      ORDER BY total_points DESC;
+    `
+
+    const formattedLeaderboard = leaderboard.map((entry: any) => ({
+      ...entry,
+      total_orders: Number(entry.total_orders),
+      total_gmv: Number(entry.total_gmv),
+    }))
+
+    return {
+      statusCode: 200,
+      body: formattedLeaderboard,
+    }
+  } catch (error) {
+    console.error("Error fetching leaderboard:", error)
+    return {
+      statusCode: 500,
+      body: "Internal Server Error",
+    }
+  }
+}
+
+export const getMonthlyLeaderboardData2 = async () => {
+  try {
+    const leaderboardData: any = await prisma.$queryRaw`
+          SELECT * FROM monthly_top_leaderboard 
+          ORDER BY total_points DESC;
+        `
+
+    const updatedData = leaderboardData.map((row: any) => ({
+      ...row,
+      total_orders: row.total_orders.toString(),
+      total_points: row.total_points.toString(),
+      total_gmv: row.total_gmv.toString(),
+    }))
+
+    return {
+      statusCode: 200,
+      body: updatedData,
+    }
+  } catch (error) {
+    console.error("Error fetching monthly leaderboard data:", error)
+    return {
+      statusCode: 500,
+      body: "Internal Server Error",
+    }
   }
 }
