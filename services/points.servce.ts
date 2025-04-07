@@ -1,5 +1,4 @@
 import { PrismaClient } from "@prisma/client"
-import { rewardledgerUpdate } from "./index"
 const prisma = new PrismaClient()
 
 export const aggregatePointsSummary = async () => {
@@ -60,47 +59,6 @@ export const createOrRefreshLeaderboardView = async () => {
     // Create or replace the daily leaderboard view
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS daily_top_leaderboard;`)
 
-    // Create the new daily leaderboard view
-    //     const previewResults = await prisma.$executeRawUnsafe(`
-    // CREATE OR REPLACE VIEW daily_top_leaderboard AS
-    // WITH all_orders AS (
-    //     -- Get all orders from the current day
-    //     SELECT
-    //         game_id,
-    //         order_id,
-    //         points,
-    //         gmv,
-    //         order_status,
-    //         timestamp_created
-    //     FROM public."orderData"
-    //     WHERE timestamp_created >= DATE_TRUNC('day', CURRENT_DATE::TIMESTAMP)
-    //       AND timestamp_created < DATE_TRUNC('day', CURRENT_DATE::TIMESTAMP) + INTERVAL '1 day'
-    // ),
-    // created_orders AS (
-    //     -- Get orders where order_status is 'created'
-    //     SELECT order_id, game_id, points, gmv
-    //     FROM all_orders
-    //     WHERE order_status = 'created'
-    // ),
-    // cancelled_orders AS (
-    //     -- Get orders where order_status is 'cancelled'
-    //     SELECT order_id, game_id
-    //     FROM all_orders
-    //     WHERE order_status = 'cancelled'
-    // )
-    // SELECT
-    //     co.game_id,
-    //     -- Calculate total orders as created orders minus cancelled orders
-    //     COUNT(DISTINCT co.order_id) - COUNT(DISTINCT ca.order_id) AS total_orders,
-    //     SUM(co.points)::DOUBLE PRECISION AS total_points,
-    //     SUM(co.gmv)::BIGINT AS total_gmv,
-    //     DATE_TRUNC('day', CURRENT_DATE)::DATE AS leaderboard_day_start
-    // FROM created_orders co
-    // LEFT JOIN cancelled_orders ca ON co.order_id = ca.order_id
-    // GROUP BY co.game_id
-    // HAVING SUM(co.points) >= 0  -- Exclude users with negative points
-    // ORDER BY total_points DESC;
-    //           `)
 
     const previewResults = await prisma.$executeRawUnsafe(`
             CREATE VIEW daily_top_leaderboard AS
@@ -121,85 +79,7 @@ WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-can
 GROUP BY r.game_id
 ORDER BY total_points DESC;
           `)
-    //     const previewResults = await prisma.$executeRawUnsafe(`
-    //       CREATE OR REPLACE VIEW daily_top_leaderboard AS
-    // WITH all_orders AS (
-    //     -- Get all orders from the current day
-    //     SELECT
-    //         game_id,
-    //         order_id,
-    //         points,
-    //         gmv,
-    //         order_status,
-    //         timestamp_created
-    //     FROM public."orderData"
-    //     WHERE timestamp_created >= DATE_TRUNC('day', CURRENT_DATE::TIMESTAMP)
-    //       AND timestamp_created < DATE_TRUNC('day', CURRENT_DATE::TIMESTAMP) + INTERVAL '1 day'
-    // ),
-    // created_orders AS (
-    //     -- Get orders where order_status is 'created'
-    //     SELECT order_id, game_id, points, gmv
-    //     FROM all_orders
-    //     WHERE order_status = 'created'
-    // ),
-    // cancelled_orders AS (
-    //     -- Get orders where order_status is 'cancelled'
-    //     SELECT order_id, game_id
-    //     FROM all_orders
-    //     WHERE order_status = 'cancelled'
-    // )
-    // SELECT
-    //     co.game_id,
-    //     -- Calculate total orders as created orders minus cancelled orders
-    //     COUNT(DISTINCT co.order_id) - COUNT(DISTINCT ca.order_id) AS total_orders,
-    //     SUM(co.points)::DOUBLE PRECISION AS total_points,
-    //     SUM(co.gmv)::BIGINT AS total_gmv,
-    //     DATE_TRUNC('day', CURRENT_DATE)::DATE AS leaderboard_day_start
-    // FROM created_orders co
-    // LEFT JOIN cancelled_orders ca ON co.order_id = ca.order_id
-    // GROUP BY co.game_id
-    // HAVING SUM(co.points) >= 0  -- Exclude users with negative points
-    // ORDER BY total_points DESC;
-    //           `)
-    //     const previewResults = await prisma.$executeRawUnsafe(`
-    //  CREATE OR REPLACE VIEW daily_top_leaderboard AS
-    // WITH first_status AS (
-    //     SELECT
-    //         game_id,
-    //         order_id,
-    //         points,
-    //         gmv,
-    //         order_status,
-    //         timestamp_created,
-    //         -- Get the first status for each order_id within the day
-    //         ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY timestamp_created ASC) AS rn
-    //     FROM public."orderData"
-    //     WHERE timestamp_created >= CURRENT_DATE
-    //       AND timestamp_created < CURRENT_DATE + INTERVAL '1 day'
-    // ),
-    // valid_orders AS (
-    //     SELECT
-    //         game_id,
-    //         order_id,
-    //         points,
-    //         gmv,
-    //         order_status,
-    //         -- Only include orders where the first status is 'created'
-    //         CASE WHEN rn = 1 AND order_status = 'created' THEN 1 ELSE 0 END AS valid_order
-    //     FROM first_status
-    // )
-    // SELECT
-    //     game_id,
-    //     SUM(points)::DOUBLE PRECISION AS total_points,
-    //     COUNT(valid_order) AS total_orders,  -- Count only valid orders
-    //     SUM(gmv)::BIGINT AS total_gmv,
-    //     CURRENT_DATE AS leaderboard_day_start
-    // FROM valid_orders
-    // WHERE valid_order = 1  -- Only count valid orders
-    // GROUP BY game_id
-    // HAVING SUM(points) >= 0  -- Exclude users with negative points
-    // ORDER BY total_points DESC;
-    //     `)
+    
 
     console.log(`Leaderboard view updated for ${todayDate} with cancellation handling, ${previewResults}`)
     return {
@@ -384,56 +264,6 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
       ORDER BY total_points DESC;
     `)
 
-    //     const previewResults = await prisma.$executeRawUnsafe(`
-    //      CREATE OR REPLACE VIEW weekly_top_leaderboard AS
-    // WITH all_orders AS (
-    //     -- Get all orders from the current week
-    //     SELECT
-    //         game_id,
-    //         order_id,
-    //         points,
-    //         gmv,
-    //         order_status,
-    //         timestamp_created
-    //     FROM public."orderData"
-    //     WHERE timestamp_created >= DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)
-    //       AND timestamp_created < DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP) + INTERVAL '7 days'
-    // ),
-    // created_orders AS (
-    //     -- Get orders where order_status is 'created'
-    //     SELECT order_id, game_id, points, gmv
-    //     FROM all_orders
-    //     WHERE order_status = 'created'
-    // ),
-    // cancelled_orders AS (
-    //     -- Get orders where order_status is 'cancelled'
-    //     SELECT order_id, game_id
-    //     FROM all_orders
-    //     WHERE order_status = 'cancelled'
-    // ),
-    // valid_orders AS (  --
-    //     SELECT
-    //         c.game_id,
-    //         c.order_id,
-    //         c.points,
-    //         c.gmv,
-    //         1 AS valid_order  -- Mark these as valid orders
-    //     FROM created_orders c
-    //     LEFT JOIN cancelled_orders co ON c.order_id = co.order_id
-    //     WHERE co.order_id IS NULL  -- Exclude cancelled orders
-    // )
-    // SELECT
-    //     game_id,
-    //     SUM(points)::DOUBLE PRECISION AS total_points,
-    //     COUNT(valid_order) AS total_orders,  -- Count only valid orders
-    //     SUM(gmv)::BIGINT AS total_gmv,
-    //     DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)::DATE AS leaderboard_week_start
-    // FROM valid_orders  --
-    // GROUP BY game_id
-    // HAVING SUM(points) >= 0  -- Exclude users with negative points
-    // ORDER BY total_points DESC;
-
-    //     `)
 
     console.log(`Weekly leaderboard view updated for the week starting ${currentWeekStartStr}., ${previewResults}`)
     return {
@@ -490,19 +320,6 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
 
     // Drop the view if it exists and recreate it with updated logic
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS monthly_top_leaderboard`)
-    // const previewResults = await prisma.$executeRawUnsafe(`
-    //     CREATE OR REPLACE VIEW monthly_top_leaderboard AS
-    //     SELECT
-    //         game_id,
-    //         SUM(points)::DOUBLE PRECISION AS total_points,  -- Ensure total_points is FLOAT
-    //         COUNT(order_id)::BIGINT AS total_orders,  -- Ensure total_orders remains BIGINT
-    //         SUM(gmv)::BIGINT AS total_gmv,  -- Ensure total_gmv is BIGINT
-    //         '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
-    //     FROM public."orderData"
-    //     WHERE DATE(timestamp_created) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
-    //     GROUP BY game_id
-    //     ORDER BY total_points DESC;
-    // `)
 
     const previewResults = await prisma.$executeRawUnsafe(`
       CREATE OR REPLACE VIEW monthly_top_leaderboard AS
@@ -525,89 +342,6 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
       ORDER BY total_points DESC;
     `)
 
-    // const previewResults = await prisma.$executeRawUnsafe(`
-    //   CREATE OR REPLACE VIEW monthly_top_leaderboard AS
-    //   SELECT
-    //       o.game_id,
-    //       COALESCE(SUM(r.points), 0) AS total_points,  -- Sum points from rewardledger only
-    //       COUNT(DISTINCT CASE WHEN o.order_status <> 'cancelled' THEN o.order_id END)::BIGINT AS total_orders,  -- Count distinct order_id to avoid double-counting
-    //       COALESCE(SUM(o.gmv), 0)::BIGINT AS total_gmv,  -- Total GMV from orderData
-    //       '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
-    //   FROM public."orderData" o
-    //   LEFT JOIN public."rewardledger" r ON o.order_id = r.order_id  -- Join on order_id to ensure accurate rewardLedger points
-    //   WHERE DATE(o.timestamp_created) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
-    //   GROUP BY o.game_id
-    //   ORDER BY total_points DESC;
-    // `)
-
-    //
-
-    // Log the SQL Query to check the dynamic date and SQL syntax
-    // const query = `
-    //   CREATE OR REPLACE VIEW monthly_top_leaderboard AS
-    //   WITH all_orders AS (
-    //     -- Get all orders from the current month
-    //     SELECT 
-    //         game_id,
-    //         order_id,
-    //         gmv,
-    //         order_status,
-    //         timestamp_created
-    //     FROM public."orderData"
-    //     WHERE timestamp_created >= DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP)
-    //       AND timestamp_created < DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP) + INTERVAL '1 month'
-    //   ),
-    //   created_orders AS (
-    //     -- Get orders where order_status is 'created'
-    //     SELECT order_id, game_id, gmv
-    //     FROM all_orders
-    //     WHERE order_status = 'created'
-    //   ),
-    //   cancelled_orders AS (
-    //     -- Get orders where order_status is 'cancelled'
-    //     SELECT order_id, game_id
-    //     FROM all_orders
-    //     WHERE order_status = 'cancelled'
-    //   ),
-    //   valid_orders AS (  
-    //     -- Define valid orders by excluding cancelled ones
-    //     SELECT 
-    //         c.game_id,
-    //         c.order_id,
-    //         c.gmv,
-    //         1 AS valid_order  -- Mark these as valid orders
-    //     FROM created_orders c
-    //     LEFT JOIN cancelled_orders co ON c.order_id = co.order_id
-    //     WHERE co.order_id IS NULL  -- Exclude cancelled orders
-    //   ),
-    //   rewardledger_points AS (
-    //     -- Get the sum of points from the rewardLedger for the same period
-    //     SELECT 
-    //         game_id,
-    //         SUM(points)::BIGINT AS total_points  -- Explicitly cast to BIGINT
-    //     FROM public."rewardledger"
-    //     WHERE created_at >= DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP)
-    //       AND created_at < DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP) + INTERVAL '1 month'
-    //     GROUP BY game_id
-    //   )
-    //   SELECT 
-    //       vo.game_id,  
-    //       COUNT(vo.valid_order) AS total_orders,  
-    //       COALESCE(rp.total_points, 0) AS total_points,  
-    //       SUM(vo.gmv)::BIGINT AS total_gmv,
-    //       DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP)::DATE AS leaderboard_month_start
-    //   FROM valid_orders vo
-    //   LEFT JOIN rewardledger_points rp ON vo.game_id = rp.game_id  
-    //   GROUP BY vo.game_id, rp.total_points
-    //   HAVING COALESCE(rp.total_points, 0) >= 0  -- Exclude users with negative points
-    //   ORDER BY total_points DESC;
-    // `
-
-    // Log the constructed query for debugging
-    // console.log("Executing SQL Query: ", query)
-
-    // Execute the query to create the view
-    // const previewResults = await prisma.$executeRawUnsafe(query)
     console.log("Preview", previewResults)
     console.log(`Monthly leaderboard view updated for the month starting ${currentMonthStartStr}.`)
 
@@ -977,27 +711,6 @@ $$ LANGUAGE plpgsql;
   }
 }
 
-// export const DailyWinnerUpdate = async () => {
-//   try {
-//     const Result: any = await prisma.$executeRawUnsafe(
-//       `
-//       SELECT * FROM daily_top_leaderboard
-//       `,
-//     )
-
-//     // Create a new entry in the dailyWinner table (singular form)
-//     await prisma.dailyWinner.create({
-//       data: {
-//         game_id: Result[0].game_id,
-//         points: Result[0].totalPoints,
-//         winning_date: new Date(), // Add current date as the winning date
-//       },
-//     })
-//   } catch (error) {
-//     console.log("Error", error)
-//   }
-// }
-
 export const DayWinnerUpdate = async () => await storePastWinners("daily_top_leaderboard", "daily")
 export const WeeklyWinnerUpdate = async () => await storePastWinners("weekly_top_leaderboard", "weekly")
 export const MonthlyWinnerUpdate = async () => await storePastWinners("monthly_top_leaderboard", "monthly")
@@ -1240,35 +953,35 @@ export const highestGmvandOrder = async () => {
     )
 
     if (winnerStatus.length > 0 && PreviousDayResult[0]?.game_id != winnerStatus[0]?.game_id) {
-      rewardledgerUpdate(
-        PreviousDayResult[0]?.game_id,
-        PreviousDayResult[0]?.last_order_id,
-        0,
-        -100,
-        "Count of highest order changed after a day",
-        false,
-        new Date(),
-      )
-      rewardledgerUpdate(
-        PreviousDayResult[1]?.game_id,
-        PreviousDayResult[1]?.last_order_id,
-        0,
-        100,
-        "Count of highest order changed after a day",
-        true,
-        new Date(),
-      )
+      // rewardledgerUpdate(
+      //   PreviousDayResult[0]?.game_id,
+      //   PreviousDayResult[0]?.last_order_id,
+      //   0,
+      //   -100,
+      //   "Count of highest order changed after a day",
+      //   false,
+      //   new Date(),
+      // )
+      // rewardledgerUpdate(
+      //   PreviousDayResult[1]?.game_id,
+      //   PreviousDayResult[1]?.last_order_id,
+      //   0,
+      //   100,
+      //   "Count of highest order changed after a day",
+      //   true,
+      //   new Date(),
+      // )
     }
 
-    rewardledgerUpdate(
-      CurrentDayResult[0]?.game_id,
-      CurrentDayResult[0]?.last_order_id,
-      0,
-      100,
-      "Points for highest order in a day",
-      true,
-      new Date(),
-    )
+    // rewardledgerUpdate(
+    //   CurrentDayResult[0]?.game_id,
+    //   CurrentDayResult[0]?.last_order_id,
+    //   0,
+    //   100,
+    //   "Points for highest order in a day",
+    //   true,
+    //   new Date(),
+    // )
     // finding orders 
 const result = await prisma.$queryRaw`
   SELECT 
@@ -1318,15 +1031,7 @@ FROM ranked_gmv
 WHERE rank = 1; -- Select the row(s) with the maximum half_gmv
     `
     const result: any = await prisma.$executeRawUnsafe(highestGmvfordayquery)
-    await rewardledgerUpdate(
-      result[0].game_id,
-      result[0].last_order_id,
-      0,
-      100,
-      "highest Gmv for the day",
-      true,
-      result[0].last_created_at,
-    )
+    console.log(result)
   } catch (error) {
     console.log(error)
   }

@@ -5,9 +5,10 @@ import { authenticate } from "../middleware/auth.middleware"
 
 const orderRouter = Router()
 const upload = multer({ dest: "uploads/" })
-orderRouter.post("/upload-csv", authenticate, upload.single("file"), orderController.uploadCsv)
+orderRouter.post("/upload-csv", upload.single("file"), orderController.uploadCsv)
 orderRouter.get("", orderController.getOrders)
 orderRouter.get("/search", orderController.search)
+orderRouter.get("/search2", orderController.search2)
 orderRouter.get("/leaderboard", orderController.aggregatePointsSummary)
 orderRouter.get("/create/leaderboard", orderController.createOrRefreshLeaderboardView)
 orderRouter.get("/create/week-leaderboard", orderController.createOrRefreshWeeklyLeaderboardView)

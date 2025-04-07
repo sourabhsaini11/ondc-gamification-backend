@@ -42,12 +42,12 @@ export const aggregatePointsCron = () => {
       "Asia/Calcutta", // Adjust to your time zone
     ),
     new CronJob(
-    "0 8 * * *", // Runs every day at 8 AM
+      "0 8 * * *", // Runs every day at 8 AM
       DayWinnerUpdate,
       null,
       true,
-    "Asia/Calcutta",
-  )
+      "Asia/Calcutta",
+    )
 
   new CronJob(
     "0 8 * * 0", // Runs every Sunday at 8 AM (end of the week)
