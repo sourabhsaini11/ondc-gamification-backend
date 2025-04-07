@@ -1,7 +1,5 @@
 import { PrismaClient } from "@prisma/client"
 import { rewardledgerUpdate } from "./index"
-// import moment from "moment"
-
 const prisma = new PrismaClient()
 
 export const aggregatePointsSummary = async () => {
@@ -118,7 +116,7 @@ SELECT
     COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Count distinct order_ids
     COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
     '${todayDate}'::DATE AS leaderboard_day_start
-FROM public."rewardledger" r
+FROM public."rewardledgertesting" r
 WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
 GROUP BY r.game_id
 ORDER BY total_points DESC;
@@ -379,7 +377,7 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
           COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           '${currentWeekStartStr}'::DATE AS leaderboard_week_start
-      FROM public."rewardledger" r 
+      FROM public."rewardledgertesting" r 
       WHERE DATE(r.created_at) >= '${currentWeekStartStr}'::DATE
         AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
       GROUP BY r.game_id
@@ -520,7 +518,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
           COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
-      FROM public."rewardledger" r 
+      FROM public."rewardledgertesting" r 
       WHERE DATE(r.created_at) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
         AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
       GROUP BY r.game_id
@@ -545,68 +543,68 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
     //
 
     // Log the SQL Query to check the dynamic date and SQL syntax
-    const query = `
-      CREATE OR REPLACE VIEW monthly_top_leaderboard AS
-      WITH all_orders AS (
-        -- Get all orders from the current month
-        SELECT 
-            game_id,
-            order_id,
-            gmv,
-            order_status,
-            timestamp_created
-        FROM public."orderData"
-        WHERE timestamp_created >= DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP)
-          AND timestamp_created < DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP) + INTERVAL '1 month'
-      ),
-      created_orders AS (
-        -- Get orders where order_status is 'created'
-        SELECT order_id, game_id, gmv
-        FROM all_orders
-        WHERE order_status = 'created'
-      ),
-      cancelled_orders AS (
-        -- Get orders where order_status is 'cancelled'
-        SELECT order_id, game_id
-        FROM all_orders
-        WHERE order_status = 'cancelled'
-      ),
-      valid_orders AS (  
-        -- Define valid orders by excluding cancelled ones
-        SELECT 
-            c.game_id,
-            c.order_id,
-            c.gmv,
-            1 AS valid_order  -- Mark these as valid orders
-        FROM created_orders c
-        LEFT JOIN cancelled_orders co ON c.order_id = co.order_id
-        WHERE co.order_id IS NULL  -- Exclude cancelled orders
-      ),
-      rewardledger_points AS (
-        -- Get the sum of points from the rewardLedger for the same period
-        SELECT 
-            game_id,
-            SUM(points)::BIGINT AS total_points  -- Explicitly cast to BIGINT
-        FROM public."rewardledger"
-        WHERE created_at >= DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP)
-          AND created_at < DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP) + INTERVAL '1 month'
-        GROUP BY game_id
-      )
-      SELECT 
-          vo.game_id,  
-          COUNT(vo.valid_order) AS total_orders,  
-          COALESCE(rp.total_points, 0) AS total_points,  
-          SUM(vo.gmv)::BIGINT AS total_gmv,
-          DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP)::DATE AS leaderboard_month_start
-      FROM valid_orders vo
-      LEFT JOIN rewardledger_points rp ON vo.game_id = rp.game_id  
-      GROUP BY vo.game_id, rp.total_points
-      HAVING COALESCE(rp.total_points, 0) >= 0  -- Exclude users with negative points
-      ORDER BY total_points DESC;
-    `
+    // const query = `
+    //   CREATE OR REPLACE VIEW monthly_top_leaderboard AS
+    //   WITH all_orders AS (
+    //     -- Get all orders from the current month
+    //     SELECT 
+    //         game_id,
+    //         order_id,
+    //         gmv,
+    //         order_status,
+    //         timestamp_created
+    //     FROM public."orderData"
+    //     WHERE timestamp_created >= DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP)
+    //       AND timestamp_created < DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP) + INTERVAL '1 month'
+    //   ),
+    //   created_orders AS (
+    //     -- Get orders where order_status is 'created'
+    //     SELECT order_id, game_id, gmv
+    //     FROM all_orders
+    //     WHERE order_status = 'created'
+    //   ),
+    //   cancelled_orders AS (
+    //     -- Get orders where order_status is 'cancelled'
+    //     SELECT order_id, game_id
+    //     FROM all_orders
+    //     WHERE order_status = 'cancelled'
+    //   ),
+    //   valid_orders AS (  
+    //     -- Define valid orders by excluding cancelled ones
+    //     SELECT 
+    //         c.game_id,
+    //         c.order_id,
+    //         c.gmv,
+    //         1 AS valid_order  -- Mark these as valid orders
+    //     FROM created_orders c
+    //     LEFT JOIN cancelled_orders co ON c.order_id = co.order_id
+    //     WHERE co.order_id IS NULL  -- Exclude cancelled orders
+    //   ),
+    //   rewardledger_points AS (
+    //     -- Get the sum of points from the rewardLedger for the same period
+    //     SELECT 
+    //         game_id,
+    //         SUM(points)::BIGINT AS total_points  -- Explicitly cast to BIGINT
+    //     FROM public."rewardledger"
+    //     WHERE created_at >= DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP)
+    //       AND created_at < DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP) + INTERVAL '1 month'
+    //     GROUP BY game_id
+    //   )
+    //   SELECT 
+    //       vo.game_id,  
+    //       COUNT(vo.valid_order) AS total_orders,  
+    //       COALESCE(rp.total_points, 0) AS total_points,  
+    //       SUM(vo.gmv)::BIGINT AS total_gmv,
+    //       DATE_TRUNC('month', '${currentMonthStartStr}'::TIMESTAMP)::DATE AS leaderboard_month_start
+    //   FROM valid_orders vo
+    //   LEFT JOIN rewardledger_points rp ON vo.game_id = rp.game_id  
+    //   GROUP BY vo.game_id, rp.total_points
+    //   HAVING COALESCE(rp.total_points, 0) >= 0  -- Exclude users with negative points
+    //   ORDER BY total_points DESC;
+    // `
 
     // Log the constructed query for debugging
-    console.log("Executing SQL Query: ", query)
+    // console.log("Executing SQL Query: ", query)
 
     // Execute the query to create the view
     // const previewResults = await prisma.$executeRawUnsafe(query)
@@ -1208,49 +1206,17 @@ export const highestGmvandOrder = async () => {
   try {
     //Today Winner
     const CurrentDayWinnerquery = `
-    WITH ranked_games_current_day AS (
-    SELECT 
-        game_id, 
-        COUNT(DISTINCT order_id) AS distinct_order_count,
-        (ARRAY_AGG(order_id ORDER BY created_at))[
-            array_length(ARRAY_AGG(order_id ORDER BY created_at), 1)
-        ] AS last_order_id,
-        DENSE_RANK() OVER (ORDER BY COUNT(DISTINCT order_id) DESC) AS rank,
-        'current_day' AS day_type
-    FROM rewardledger
-    WHERE DATE(created_at) = CURRENT_DATE
-    GROUP BY game_id
-)
-SELECT 
-    game_id, 
-    distinct_order_count, 
-    last_order_id, 
-    day_type
-FROM ranked_games_current_day
-WHERE rank <= 2;
+    Select game_id ,SUM(gmv) from rewardledgertesting where order_status!= 'cancelled' and DATE(order_timestamp_created) = CURRENT_DATE GROUP BY game_id;
   `
     //Previous day Updated top two position players for comparing because may be if someone has cancelled order here we will get update points
     const PreviousDayWinnerquery = `
-  WITH ranked_games_previous_day AS (
     SELECT 
         game_id, 
-        COUNT(DISTINCT order_id) AS distinct_order_count,
-        (ARRAY_AGG(order_id ORDER BY created_at))[
-            array_length(ARRAY_AGG(order_id ORDER BY created_at), 1)
-        ] AS last_order_id,
-        DENSE_RANK() OVER (ORDER BY COUNT(DISTINCT order_id) DESC) AS rank,
-        'previous_day' AS day_type
-    FROM rewardledger
-    WHERE DATE(created_at) = CURRENT_DATE - INTERVAL '1 day'
+        SUM(gmv)
+    FROM rewardledgertesting 
+    WHERE DATE(order_timestamp_created) = CURRENT_DATE - INTERVAL '1 day'
+    and order_status!= 'cancelled'
     GROUP BY game_id
-)
-SELECT 
-    game_id, 
-    distinct_order_count, 
-    last_order_id, 
-    day_type
-FROM ranked_games_previous_day
-WHERE rank <= 2;
   `
     const CurrentDayResult: any = await prisma.$queryRawUnsafe(CurrentDayWinnerquery)
 
@@ -1258,16 +1224,25 @@ WHERE rank <= 2;
 
     //getting the winner of previous day that was already stored in DailyWinner
     const winnerStatus: any = await prisma.$queryRawUnsafe(`
-     SELECT game_id
-FROM dailyWinner
-WHERE winning_date >= CURRENT_DATE - INTERVAL '1 day' -- Start of the previous day
-  AND winning_date < CURRENT_DATE  and position=1 and type='daily' 
+        SELECT game_id
+   FROM dailyWinner
+   WHERE winning_date >= CURRENT_DATE - INTERVAL '1 day' -- Start of the previous day
+     AND winning_date < CURRENT_DATE  and position=1 and type='daily' 
       `)
+
+    console.log(
+      "winnerStatus",
+      winnerStatus,
+      "PreviousDayResult",
+      PreviousDayResult,
+      "CurrentDayResult",
+      CurrentDayResult,
+    )
 
     if (winnerStatus.length > 0 && PreviousDayResult[0]?.game_id != winnerStatus[0]?.game_id) {
       rewardledgerUpdate(
-        PreviousDayResult[0].game_id,
-        PreviousDayResult[0].last_order_id,
+        PreviousDayResult[0]?.game_id,
+        PreviousDayResult[0]?.last_order_id,
         0,
         -100,
         "Count of highest order changed after a day",
@@ -1275,8 +1250,8 @@ WHERE winning_date >= CURRENT_DATE - INTERVAL '1 day' -- Start of the previous d
         new Date(),
       )
       rewardledgerUpdate(
-        PreviousDayResult[1].game_id,
-        PreviousDayResult[1].last_order_id,
+        PreviousDayResult[1]?.game_id,
+        PreviousDayResult[1]?.last_order_id,
         0,
         100,
         "Count of highest order changed after a day",
@@ -1286,16 +1261,27 @@ WHERE winning_date >= CURRENT_DATE - INTERVAL '1 day' -- Start of the previous d
     }
 
     rewardledgerUpdate(
-      CurrentDayResult[0].game_id,
-      CurrentDayResult[0].last_order_id,
+      CurrentDayResult[0]?.game_id,
+      CurrentDayResult[0]?.last_order_id,
       0,
       100,
       "Points for highest order in a day",
       true,
       new Date(),
     )
+    // finding orders 
+const result = await prisma.$queryRaw`
+  SELECT 
+    game_id, 
+    DATE (order_timestamp_created),
+    COUNT(DISTINCT CASE WHEN order_status = 'active' THEN order_id END)
+    - COUNT(DISTINCT CASE WHEN order_status = 'cancelled' THEN order_id END) AS order_count
+  FROM public.rewardledgertesting 
+  GROUP BY game_id , DATE(order_timestamp_created)
+  ORDER BY order_count DESC;
+`;
 
-    console.log("result", CurrentDayResult)
+    console.log("result", result)
   } catch (error: any) {
     console.log("error", error)
   }

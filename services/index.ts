@@ -364,10 +364,6 @@ export const parseAndStoreCsv = async (
             // domain: normalizedRow["domain"],
             buyer_app_id: String(userId),
             total_price: totalPrice,
-            // shipping_charges: parseFloat(String(normalizedRow["shipping_charges"])) || 0,
-            // taxes: parseFloat(String(normalizedRow["taxes"])) || 0,
-            // discount: parseFloat(String(normalizedRow["discount"])) || 0,
-            // convenience_fee: parseFloat(String(normalizedRow["conveniance_fee"])) || 0,
             uploaded_by: userId,
           })
 
@@ -382,19 +378,10 @@ export const parseAndStoreCsv = async (
             orderStatus: normalizedRow["order_status"] as string,
             buyerAppId: normalizedRow["buyer_app_id"] as string,
           })
-          // } else {
-          //   console.warn(`Duplicate order_id ${orderId} with status ${normalizedRow["order_status"]} skipped.`)
-          //   return reject({ success: false, message: `Duplicate Order Id: ${orderId} Exists` })
-          // }
-
-          // records.filter((order)=>ordersExist.includes(order.))
-          // console.log("records", records)
         } catch (error: any) {
           console.log("error", error)
           stream.destroy()
           return reject({ success: false, message: error.message })
-          // console.error("❌ Error processing row:", error)
-          // return reject({ success: false, message: error })
         }
       })
       .on("end", async () => {
@@ -450,8 +437,6 @@ export const parseAndStoreCsv = async (
             return reject({ success: false, message: isDuplicateCancellation.message })
           }
 
-          // await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" DISABLE TRIGGER rewardledger_trigger;`)
-
           if (newOrders.length > 0) {
             const processedNewOrders = await processNewOrders(newOrders)
             await bulkInsertDataIntoDb(processedNewOrders)
@@ -467,13 +452,6 @@ export const parseAndStoreCsv = async (
               throw new Error(error.message)
             }
           }
-
-          // await prisma.$executeRawUnsafe(`ALTER TABLE "orderData" ENABLE TRIGGER rewardledger_trigger;`)
-
-          // await updateHighestGmvAndOrdersForDay()
-
-          // console.log("newOrders", newOrders)
-          // console.log("cancellations", cancellations)
 
           console.log("✅ CSV data stored successfully")
           resolve({ success: true, message: "CSV data stored successfully" })
@@ -610,81 +588,6 @@ export const search = async (game_id: string, format: string) => {
   }
 }
 
-// const updateLeaderboard = async () => {
-//   try {
-//     // await prisma.$executeRaw`TRUNCATE TABLE "Leaderboard";`
-
-//     const users = await prisma.orderData.findMany()
-//     const myMap = new Map()
-
-//     const leaderboardData = users.map((user: any) => {
-//       let userOrderData = myMap.get(user.uid)
-
-//       const currentDate = new Date(user.timestamp_created)
-//       const currentDay = currentDate.toISOString().split("T")[0] // Format as YYYY-MM-DD
-
-//       // If the user has made an order before today, check and add repeat order points
-//       if (userOrderData && userOrderData.lastOrderDate === currentDay) {
-//         // Increment order count for today
-//         userOrderData.orderCount += 1
-//       } else {
-//         // If it's the first order of the day, reset the order count and update the last order date
-//         userOrderData = {
-//           orderCount: 1,
-//           lastOrderDate: currentDay,
-//           totalPoints: 0,
-//         }
-//       }
-
-//       // Update the Map with the latest data for the user
-//       myMap.set(user.uid, userOrderData)
-
-//       const basePoints = 10
-//       const gmv =
-//         parseFloat(user.base_price) +
-//         parseFloat(user.shipping_charges) +
-//         parseFloat(user.taxes) -
-//         parseFloat(user.discount) +
-//         parseFloat(user.convenience_fee)
-//       const gmvPoints = Math.floor(gmv / 10)
-//       const highValueBonus = gmv > 1000 ? 50 : 0
-//       const { streakcount, streakMaintain, currentTimestamp } = ProcessSteak(
-//         new Date(user.timestamp_created),
-//         new Date(user.timestamp_created),
-//         Number(user.streak_count),
-//       )
-//       let repeatOrderPoints = 0
-//       if (userOrderData.orderCount > 1) {
-//         // Increment points for each repeat order (2nd, 3rd, etc.)
-//         repeatOrderPoints = 15 + (userOrderData.orderCount - 2) * 5 // 15 points for the 2nd order, 20 for 3rd, etc.
-//       }
-
-//       const Points = CalculatePoints(gmv, Number(user.streak_count), user.uid)
-//       const totalPoints = basePoints + gmvPoints + highValueBonus + Number(Points) + repeatOrderPoints
-//       return {
-//         uid: user.uid,
-//         name: user.name,
-//         basePoints,
-//         gmvPoints,
-//         highValueBonus,
-//         totalPoints,
-//         streak: streakcount,
-//         streak_maintain: streakMaintain,
-//         last_streak_date: currentTimestamp,
-//         updatedAt: new Date(),
-//       }
-//     })
-
-//     // await prisma.leaderboard.createMany({ data: leaderboardData, skipDuplicates: true })
-//     console.log("🏆 Leaderboard updated successfully:", leaderboardData)
-//   } catch (error) {
-//     console.error("❌ Error updating leaderboard:", error)
-//     throw error
-//   }
-// }
-
-// console.log("updateLeaderboard", updateLeaderboard)
-
 export const getOrders = async (page: number = 1, pageSize: number = 100) => {
   try {
     const skip = (page - 1) * pageSize
@@ -711,61 +614,6 @@ export const getOrders = async (page: number = 1, pageSize: number = 100) => {
   }
 }
 
-// const CalculatePoints = async (gmv: number, streakCount: number, uid: string) => {
-//   gmv = Math.max(0, parseFloat(gmv.toString()))
-
-//   let points = 10
-//   points += Math.floor(gmv / 10)
-
-//   if (gmv > 1000) {
-//     points += 50
-//   }
-
-//   try {
-//     // const orderCount = await getTodayOrderCount(uid)
-//     const orderCount = 1
-//     points += orderCount * 5
-//   } catch (error) {
-//     console.error(`Error calculating order count points for ${uid}:`, error)
-//   }
-
-//   if (streakCount > 0) {
-//     const streakBonuses: { [key: number]: number } = {
-//       3: 20,
-//       7: 30,
-//       10: 100,
-//       14: 200,
-//       21: 500,
-//       28: 700,
-//     }
-
-//     if (streakBonuses[streakCount]) {
-//       points += streakBonuses[streakCount]
-//     }
-//   }
-
-//   return points
-// }
-
-// const getTodayOrderCount = async (uid: string): Promise<number> => {
-//   try {
-//     const ordersToday = await prisma.orderData.count({
-//       where: {
-//         uid: uid,
-//         timestampCreated: {
-//           gte: new Date(new Date().setHours(0, 0, 0, 0)),
-//           lt: new Date(new Date().setHours(23, 59, 59, 999)),
-//         },
-//       },
-//     });
-
-//     return ordersToday
-//   } catch (error) {
-//     console.error("Error fetching today's order count:", error);
-//     throw error
-//   }
-// }
-
 const processNewOrders = async (orders: any) => {
   const processedData = []
 
@@ -775,13 +623,8 @@ const processNewOrders = async (orders: any) => {
     for (const row of orders) {
       try {
         const uid = String(row.uid || "").trim()
-        // const timestampCreated: any = parseTimestamp(row.timestamp_created)
         const timestampCreated: any = row.timestamp_created
         console.log("tiemstampCreated", timestampCreated, new Date(timestampCreated), row.timestamp_created)
-        // if (!timestampCreated.isValid()) {
-        //   console.log(`Invalid timestamp for order ${row.order_id}`)
-        //   continue
-        // }
 
         // Get existing user data
         const existingUser = await prisma.orderData.findFirst({
@@ -806,16 +649,11 @@ const processNewOrders = async (orders: any) => {
             uidFirstOrderTimestamp[uid] = String(new Date(timestampCreated).getUTCHours()).padStart(2, "0")
           }
 
-          // const firstName = row.name ? row.name.split(" ")[0] : "User"
+         
           const fullUid = uid
 
-          // Hash the lastUidDigits using BLAKE2b-512
-          // const hash = blake2b(lastUidDigits, undefined, 64) // 64-byte (512-bit) hash
-          // const hashedlastUidDigits = Buffer.from(hash).toString("hex")
-          // console.log("hashedlastUidDigits", hashedlastUidDigits)
           lastStreakDate = timestampCreated
-          // const temp_id = `${firstName}${uidFirstOrderTimestamp[uid]}${lastUidDigits}`
-          // const temp_id = `${firstUidDigits}${firstName}${lastUidDigits}`
+          //GAME ID FORMATION
           const temp_id = `${fullUid}`
           const hash = blake2b(temp_id, undefined, 64) // 64-byte (512-bit) hash
           const hashedId = Buffer.from(hash).toString("hex")
@@ -827,15 +665,15 @@ const processNewOrders = async (orders: any) => {
         // Calculate GMV
         const gmv = parseFloat(row.total_price) || 0
 
-        rewardledgerUpdate(
-          game_id,
-          row.order_id,
-          gmv,
-          Math.floor(gmv / 10),
-          "GMV & Points",
-          true,
-          row.timestamp_created,
-        )
+        // rewardledgerUpdate(
+        //   game_id,
+        //   row.order_id,
+        //   gmv,
+        //   Math.floor(gmv / 10),
+        //   "GMV & Points",
+        //   true,
+        //   row.timestamp_created,
+        // )
 
         console.log("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
 
@@ -994,11 +832,6 @@ const processCancellations = async (cancellations: any) => {
           return isNaN(num) ? defaultValue : Math.abs(num)
         }
 
-        // const basePrice = safeFloat(row.base_price, 0)
-        // const shippingCharges = safeFloat(row.shipping_charges, 0)
-        // const taxes = safeFloat(row.taxes, 0)
-        // const convenienceFee = safeFloat(row.convenience_fee, 0)
-        // const discount = safeFloat(row.discount, 0)
 
         // Calculate new GMV
         let newGmv = safeFloat(row.total_price, 0)
@@ -1008,51 +841,45 @@ const processCancellations = async (cancellations: any) => {
         if (orderStatus === "cancelled") {
           newGmv = originalGmv // Full cancellation resets GMV
           pointsAdjustment = -originalPoints
-          rewardledgerUpdate(
-            gameId,
-            orderId,
-            -newGmv,
-            -originalPoints,
-            "Cancelled GMV & Points",
-            false,
-            timestampCreated,
-          )
-          // if (canceledOrderCount == 0) {
-          //   console.log("------->")
-          //   pointsAdjustment = -(originalPoints + 200)
-          // } else if (canceledOrderCount == 1) {
-          //   pointsAdjustment = -tPoint
-          // }
+          // rewardledgerUpdate(
+          //   gameId,
+          //   orderId,
+          //   -newGmv,
+          //   -originalPoints,
+          //   "Cancelled GMV & Points",
+          //   false,
+          //   timestampCreated,
+          // )
 
           await deductPointsForHigherSameDayOrders(uid, orderId, timestampCreated, gameId, same_day_order_count)
           await deductStreakPointsForFutureOrders(uid, orderId, timestampCreated, gameId, streak_count)
 
           // checking for the change in the leaderboard
-          const Result: any = await prisma.dailyWinner.findFirst({
-            where: {
-              game_id: gameId,
-            },
-          })
-          if (Result) {
-            const topUsers: any = await prisma.rewardLedger.findMany({
-              where: {
-                created_at: Result[0].winningDate,
-              },
-              orderBy: {
-                points: "desc", // Sort by points in descending order to get the top users
-              },
-              take: 2, // Only take the top 2 users
-            })
-            if (topUsers[0].points - pointsAdjustment < topUsers[1].points) {
-              // await rewardledgerUpdate(
-              //   gameId,
-              //   orderId,
-              //   Result[0].winning_date,
-              //   -100,
-              //   "Points deducted for removing from the poisition",
-              // )
-            }
-          }
+          // const Result: any = await prisma.dailyWinner.findFirst({
+          //   where: {
+          //     game_id: gameId,
+          //   },
+          // })
+          // if (Result) {
+          //   const topUsers: any = await prisma.rewardLedger.findMany({
+          //     where: {
+          //       created_at: Result[0].winningDate,
+          //     },
+          //     orderBy: {
+          //       points: "desc", // Sort by points in descending order to get the top users
+          //     },
+          //     take: 2, // Only take the top 2 users
+          //   })
+          //   if (topUsers[0].points - pointsAdjustment < topUsers[1].points) {
+          //     // await rewardledgerUpdate(
+          //     //   gameId,
+          //     //   orderId,
+          //     //   Result[0].winning_date,
+          //     //   -100,
+          //     //   "Points deducted for removing from the poisition",
+          //     // )
+          //   }
+          // }
           // const Result: any = await prisma.$executeRawUnsafe(`
           //     Select game_id,points from dailyWinner limit 2
           //   `)
@@ -1082,26 +909,18 @@ const processCancellations = async (cancellations: any) => {
 
           pointsAdjustment = newPoints - originalPoints // 110 - 210 = -110
           const gmvAdjustment = originalGmv - newGmv
-          rewardledgerUpdate(
-            gameId,
-            orderId,
-            gmvAdjustment,
-            pointsAdjustment,
-            "Adjusted GMV & Points",
-            false,
-            timestampCreated,
-          )
+          console.log("gmvAdjustment", gmvAdjustment)
+          // rewardledgerUpdate(
+          //   gameId,
+          //   orderId,
+          //   gmvAdjustment,
+          //   pointsAdjustment,
+          //   "Adjusted GMV & Points",
+          //   false,
+          //   timestampCreated,
+          // )
         }
 
-        // rewardledgerUpdate(
-        //   gameId,
-        //   row.order_id,
-        //   -newGmv,
-        //   -Math.floor(newGmv / 10),
-        //   "Adjusted GMV & Points",
-        //   true,
-        //   timestampCreated,
-        // )
         console.log("first---", timestampCreated, timestampCreated.toISOString())
 
         streakCancellation(
@@ -1119,11 +938,6 @@ const processCancellations = async (cancellations: any) => {
           highest_gmv_for_day: false,
           highest_orders_for_day: false,
           gmv: newGmv,
-          // total_price: row.total_price,
-          // shipping_charges: shippingCharges,
-          // taxes: taxes,
-          // convenience_fee: convenienceFee,
-          // discount: discount,
           updated_by_lambda: new Date().toISOString(),
           timestamp_created: timestampCreated.toISOString(),
           timestamp_updated: new Date().toISOString(),
@@ -1367,6 +1181,7 @@ const calculatePoints = async (
   points += 10
 
   if (condition === "partial") {
+    console.log(game_id)
     // await rewardledgerUpdate(game_id, orderId, 0, -10.0, "base Points deducted for part cancel ", true)
     // await rewardledgerUpdate(
     //   game_id,
@@ -1379,7 +1194,7 @@ const calculatePoints = async (
     // )
     // ? Why are we sending points + 50 in the case of originalGMV excedding 1000 & current GMV deceding 1000
     if (originalGmv > 1000 && gmv < 1000) {
-      await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV < 1000 in partial cancellation", true, timestamp)
+      // await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV < 1000 in partial cancellation", true, timestamp)
       return points + 50
     } else {
       points += 50
@@ -1402,7 +1217,7 @@ const calculatePoints = async (
     console.log("here in partial")
     return points
   } else {
-    await rewardledgerUpdate(game_id, orderId, 0, +10.0, "base Points awarded for the order ", true, timestamp)
+    // await rewardledgerUpdate(game_id, orderId, 0, +10.0, "base Points awarded for the order ", true, timestamp)
     // await rewardledgerUpdate(
     //   game_id,
     //   orderId,
@@ -1416,7 +1231,7 @@ const calculatePoints = async (
 
   if (gmv > 1000) {
     points += 50
-    await rewardledgerUpdate(game_id, orderId, 0, +50.0, "GMV Greater 1000", true, timestamp)
+    // await rewardledgerUpdate(game_id, orderId, 0, +50.0, "GMV Greater 1000", true, timestamp)
   }
 
   try {
@@ -1425,15 +1240,15 @@ const calculatePoints = async (
     console.log("==========>", orderCount, timestamp)
     points += orderCount * 5
     // if (orderCount > 1) {
-    await rewardledgerUpdate(
-      game_id,
-      orderId,
-      0,
-      +orderCount * 5,
-      `Points for Repeated Order ${orderCount} in a day`,
-      true,
-      timestamp,
-    )
+    // await rewardledgerUpdate(
+    //   game_id,
+    //   orderId,
+    //   0,
+    //   +orderCount * 5,
+    //   `Points for Repeated Order ${orderCount} in a day`,
+    //   true,
+    //   timestamp,
+    // )
     // }
   } catch (error) {
     console.error(`Error calculating order count points for ${uid}:`, error)
@@ -1458,15 +1273,15 @@ const calculatePoints = async (
 
     if (streakBonuses[streakCount]) {
       points += streakBonuses[streakCount]
-      await rewardledgerUpdate(
-        game_id,
-        orderId,
-        0,
-        +streakBonuses[streakCount],
-        "Points assigned for Streak maintaince ",
-        true,
-        timestamp,
-      )
+      // await rewardledgerUpdate(
+      //   game_id,
+      //   orderId,
+      //   0,
+      //   +streakBonuses[streakCount],
+      //   "Points assigned for Streak maintaince ",
+      //   true,
+      //   timestamp,
+      // )
     }
   }
 
@@ -1482,136 +1297,137 @@ const deductStreakPointsForFutureOrders = async (
   streak_count: number,
 ) => {
   try {
-    const startOfDay = new Date(timestamp_created)
-    startOfDay.setHours(0, 0, 0, 0)
-    const endOfDay = new Date(timestamp_created)
-    endOfDay.setHours(23, 59, 59, 999)
+    console.log(uid, orderId, timestamp_created, game_id, streak_count)
+    // const startOfDay = new Date(timestamp_created)
+    // startOfDay.setHours(0, 0, 0, 0)
+    // const endOfDay = new Date(timestamp_created)
+    // endOfDay.setHours(23, 59, 59, 999)
 
-    console.log("streak_count", streak_count)
+    // console.log("streak_count", streak_count)
 
-    // Streak bonus map
-    const streakBonuses: Record<number, number> = {
-      3: 20,
-      7: 30,
-      10: 100,
-      14: 200,
-      21: 500,
-      28: 700,
-    }
+    // // Streak bonus map
+    // const streakBonuses: Record<number, number> = {
+    //   3: 20,
+    //   7: 30,
+    //   10: 100,
+    //   14: 200,
+    //   21: 500,
+    //   28: 700,
+    // }
 
-    const canceledOrders = await prisma.orderData.findMany({
-      where: {
-        uid: uid,
-        game_id: game_id,
-        timestamp_created: { gte: startOfDay, lte: endOfDay },
-        order_status: "cancelled",
-      },
-      select: { order_id: true },
-    })
-    const canceledOrderIds = canceledOrders.map((order: any) => order.order_id)
-
-    // Check if more orders exist for the same user, game, and day
-    const sameDayOrders = await prisma.orderData.findMany({
-      where: {
-        uid: uid,
-        game_id: game_id,
-        timestamp_created: { gte: startOfDay, lte: endOfDay },
-        NOT: { order_id: { in: [...canceledOrderIds, orderId] } },
-      },
-    })
-
-    console.log("sameDayOrders", sameDayOrders)
-
-    // Deduct points for the current order based on its streak count
-    // let currentOrderPointsToDeduct = 0
-    // currentOrderPointsToDeduct = currentOrderPointsToDeduct + streakBonuses[streak_count]
-
-    // const currentOrder: any = await prisma.orderData.findFirst({
-    //   where: { order_id: orderId, uid: uid, game_id: game_id },
-    //   select: { id: true },
+    // const canceledOrders = await prisma.orderData.findMany({
+    //   where: {
+    //     uid: uid,
+    //     game_id: game_id,
+    //     timestamp_created: { gte: startOfDay, lte: endOfDay },
+    //     order_status: "cancelled",
+    //   },
+    //   select: { order_id: true },
     // })
+    // const canceledOrderIds = canceledOrders.map((order: any) => order.order_id)
 
-    // const updatedCurrentStreak = Math.max(streak_count - 1, 1)
-
-    // await prisma.orderData.update({
-    //   where: { id: currentOrder.id },
-    //   data: {
-    //     points: currentOrderPointsToDeduct > 0 ? { decrement: currentOrderPointsToDeduct } : undefined,
-    //     streak_count: 0,
-    //     updated_by_lambda: new Date().toISOString(),
+    // // Check if more orders exist for the same user, game, and day
+    // const sameDayOrders = await prisma.orderData.findMany({
+    //   where: {
+    //     uid: uid,
+    //     game_id: game_id,
+    //     timestamp_created: { gte: startOfDay, lte: endOfDay },
+    //     NOT: { order_id: { in: [...canceledOrderIds, orderId] } },
     //   },
     // })
+
+    // console.log("sameDayOrders", sameDayOrders)
+
+    // // Deduct points for the current order based on its streak count
+    // // let currentOrderPointsToDeduct = 0
+    // // currentOrderPointsToDeduct = currentOrderPointsToDeduct + streakBonuses[streak_count]
+
+    // // const currentOrder: any = await prisma.orderData.findFirst({
+    // //   where: { order_id: orderId, uid: uid, game_id: game_id },
+    // //   select: { id: true },
+    // // })
+
+    // // const updatedCurrentStreak = Math.max(streak_count - 1, 1)
+
+    // // await prisma.orderData.update({
+    // //   where: { id: currentOrder.id },
+    // //   data: {
+    // //     points: currentOrderPointsToDeduct > 0 ? { decrement: currentOrderPointsToDeduct } : undefined,
+    // //     streak_count: 0,
+    // //     updated_by_lambda: new Date().toISOString(),
+    // //   },
+    // // })
+    // // console.log(
+    // //   `Deducted ${currentOrderPointsToDeduct} points from current order ${orderId}, streak updated to ${updatedCurrentStreak}`,
+    // // )
+
+    // // If other orders exist on the same day, we skip deductions for future orders
+    // if (sameDayOrders.length > 0) {
+    //   console.log(`Skipping future deductions because other orders exist for game_id ${game_id} on this day.`)
+    //   return
+    // }
+
     // console.log(
-    //   `Deducted ${currentOrderPointsToDeduct} points from current order ${orderId}, streak updated to ${updatedCurrentStreak}`,
+    //   `No other orders found for game_id ${game_id} on this day, proceeding with streak reduction for future orders.`,
     // )
 
-    // If other orders exist on the same day, we skip deductions for future orders
-    if (sameDayOrders.length > 0) {
-      console.log(`Skipping future deductions because other orders exist for game_id ${game_id} on this day.`)
-      return
-    }
+    // // Find all future orders (same day and later) for the same user & game
+    // const futureOrders = await prisma.orderData.findMany({
+    //   where: {
+    //     uid: uid,
+    //     game_id: game_id,
+    //     timestamp_created: { gte: startOfDay },
+    //     NOT: { order_id: orderId },
+    //   },
+    //   orderBy: { timestamp_created: "asc" },
+    // })
 
-    console.log(
-      `No other orders found for game_id ${game_id} on this day, proceeding with streak reduction for future orders.`,
-    )
+    // console.log("futureOrders", futureOrders)
 
-    // Find all future orders (same day and later) for the same user & game
-    const futureOrders = await prisma.orderData.findMany({
-      where: {
-        uid: uid,
-        game_id: game_id,
-        timestamp_created: { gte: startOfDay },
-        NOT: { order_id: orderId },
-      },
-      orderBy: { timestamp_created: "asc" },
-    })
+    // let totalDeducted = 0
 
-    console.log("futureOrders", futureOrders)
+    // for (const order of futureOrders) {
+    //   console.log("Processing order:", order.order_id)
 
-    let totalDeducted = 0
+    //   if (order.streak_count === 1) {
+    //     console.log(`Stopping deduction at order ${order.order_id} (streak == 1)`)
+    //     break
+    //   }
 
-    for (const order of futureOrders) {
-      console.log("Processing order:", order.order_id)
+    //   let pointsToDeduct = 0
+    //   pointsToDeduct = pointsToDeduct + streakBonuses[order.streak_count]
 
-      if (order.streak_count === 1) {
-        console.log(`Stopping deduction at order ${order.order_id} (streak == 1)`)
-        break
-      }
+    //   const updatedStreak = Math.max(order.streak_count - streak_count, 1)
+    //   console.log("updatedStreak", order.streak_count, updatedStreak)
 
-      let pointsToDeduct = 0
-      pointsToDeduct = pointsToDeduct + streakBonuses[order.streak_count]
+    //   const logs = await prisma.orderData.update({
+    //     where: { id: order.id },
+    //     data: {
+    //       points: pointsToDeduct > 0 ? { decrement: pointsToDeduct } : undefined,
+    //       streak_count: updatedStreak,
+    //       updated_by_lambda: new Date().toISOString(),
+    //     },
+    //   })
+    //   console.log("logs", logs)
 
-      const updatedStreak = Math.max(order.streak_count - streak_count, 1)
-      console.log("updatedStreak", order.streak_count, updatedStreak)
+    //   if (pointsToDeduct > 0) {
+    //     totalDeducted += pointsToDeduct
+    //     console.log(`Deducted ${pointsToDeduct} points from order ${order.order_id}`)
+    //     await rewardledgerUpdate(
+    //       game_id,
+    //       order.order_id,
+    //       0,
+    //       -pointsToDeduct,
+    //       "Streak deduction",
+    //       false,
+    //       order.timestamp_created,
+    //     )
+    //   } else {
+    //     console.log(`No points deducted for order ${order.order_id}, but streak count was reduced.`)
+    //   }
+    // }
 
-      const logs = await prisma.orderData.update({
-        where: { id: order.id },
-        data: {
-          points: pointsToDeduct > 0 ? { decrement: pointsToDeduct } : undefined,
-          streak_count: updatedStreak,
-          updated_by_lambda: new Date().toISOString(),
-        },
-      })
-      console.log("logs", logs)
-
-      if (pointsToDeduct > 0) {
-        totalDeducted += pointsToDeduct
-        console.log(`Deducted ${pointsToDeduct} points from order ${order.order_id}`)
-        await rewardledgerUpdate(
-          game_id,
-          order.order_id,
-          0,
-          -pointsToDeduct,
-          "Streak deduction",
-          false,
-          order.timestamp_created,
-        )
-      } else {
-        console.log(`No points deducted for order ${order.order_id}, but streak count was reduced.`)
-      }
-    }
-
-    console.log(`Total points deducted: ${totalDeducted}`)
+    // console.log(`Total points deducted: ${totalDeducted}`)
   } catch (error) {
     console.error("Error deducting streak points:", error)
   }
@@ -1676,8 +1492,9 @@ const deductPointsForHigherSameDayOrders = async (
     console.log("updatedOrders", updatedOrders, allOrders)
     if (updatedOrders.count > 0) {
       await Promise.all(
-        allOrders.map((order: any) =>
-          rewardledgerUpdate(game_id, order.order_id, 0, -5, "Same-day order penalty", false, order.timestamp_created),
+        allOrders.map(
+          (order: any) => console.log("orders", order),
+          // rewardledgerUpdate(game_id, order.order_id, 0, -5, "Same-day order penalty", false, order.timestamp_created),
         ),
       )
     }
