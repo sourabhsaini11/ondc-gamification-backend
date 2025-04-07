@@ -30,7 +30,6 @@ import {
   // leaderboardTrigger,
   rewardLedgerTrigger,
   DayWinnerUpdate,
-  PointsAssignedforhighestGmv,
 } from "../../services/points.servce"
 // import { logger } from "../../shared/logger"
 import { Parser } from "json2csv"
@@ -369,17 +368,7 @@ const orderController = {
       return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
-  highestGmvandOrder: async (_req: Request, res: Response): Promise<Response> => {
-    try {
-      console.log("_req", _req)
-      console.log("highestGmvandOrder")
-      const orders = await PointsAssignedforhighestGmv()
-      return res.status(200).json({ success: true, data: orders })
-    } catch (error) {
-      console.error("❌ Error retrieving orders:", error)
-      return res.status(500).json({ success: false, message: "Internal Server Error" })
-    }
-  },
+
   DayWinnerUpdate: async (_req: Request, res: Response): Promise<Response> => {
     try {
       console.log("_req", _req)
