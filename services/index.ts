@@ -610,6 +610,43 @@ export const search = async (game_id: string, format: string) => {
   }
 }
 
+export const search2 = async (game_id: string, format: string) => {
+  try {
+    console.log("Format:", format, "Game ID:", game_id)
+
+    const startDate = new Date()
+
+    if (format === "daily") {
+      startDate.setUTCHours(0, 0, 0, 0) // Start of the day UTC
+    } else if (format === "weekly") {
+      startDate.setUTCDate(startDate.getUTCDate() - 6)
+      startDate.setUTCHours(0, 0, 0, 0)
+    } else if (format === "monthly") {
+      startDate.setUTCDate(startDate.getUTCDate() - 30)
+      startDate.setUTCHours(0, 0, 0, 0)
+    } else {
+      throw new Error("Invalid format. Allowed values: 'daily', 'weekly', 'monthly'.")
+    }
+
+    // ✅ Ensure correct format for Prisma DateTime filter
+    console.log("Start Date Filter (UTC):", startDate.toISOString())
+
+    const totalPoints = await prisma.$queryRaw`
+  SELECT COALESCE(SUM(points), 0) AS total_points, game_id
+  FROM rewardledgertesting
+  WHERE game_id LIKE ${game_id} || '%'
+  AND created_at >= ${new Date(startDate).toISOString()}::timestamp AT TIME ZONE 'UTC'
+  GROUP BY game_id
+`
+
+    console.log("Total Points Result:", totalPoints)
+    return totalPoints
+  } catch (error) {
+    console.error("Error in search function:", error)
+    throw error
+  }
+}
+
 // const updateLeaderboard = async () => {
 //   try {
 //     // await prisma.$executeRaw`TRUNCATE TABLE "Leaderboard";`
@@ -1823,6 +1860,9 @@ const processStreak = (lastStreakDate: any, currentTimestamp: any, streakCount: 
       const lastStreakDay = moment(lastStreakDate).startOf("day")
       const currentDay = moment(currentTimestamp).startOf("day")
       const dayDifference = currentDay.diff(lastStreakDay, "days")
+      console.log("lastStreakDate", lastStreakDate)
+      console.log("currentDay", currentDay)
+      console.log("dayDifference", dayDifference)
 
       if (dayDifference === 1) {
         newStreakCount += 1 // Continue streak

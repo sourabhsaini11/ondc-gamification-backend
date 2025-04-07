@@ -10,6 +10,7 @@ import {
   rewardledgertesting,
   db,
   removetrigger,
+  search2,
 } from "../../services"
 import {
   aggregatePointsSummary,
@@ -169,6 +170,32 @@ const orderController = {
       }
 
       const Points = await search(game_id, format)
+
+      console.log("Points:", JSON.stringify(Points))
+
+      return res.status(200).json({ success: true, data: Points })
+    } catch (error) {
+      console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  },
+
+  search2: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      console.log("Request Query Params:", req.query)
+
+      // Extract & validate query params
+      const { format, game_id } = req.query
+
+      if (!format || !game_id) {
+        return res.status(400).json({ success: false, message: "Missing required parameters: format and game_id" })
+      }
+
+      if (typeof format !== "string" || typeof game_id !== "string") {
+        return res.status(400).json({ success: false, message: "Invalid parameter types" })
+      }
+
+      const Points = await search2(game_id, format)
 
       console.log("Points:", JSON.stringify(Points))
 
