@@ -27,4 +27,5 @@ orderRouter.get("/rewardledger", orderController.rewardledger)
 orderRouter.get("/rewardledgertesting", orderController.rewardledgertesting)
 orderRouter.get("/db", orderController.db)
 orderRouter.get("/removetrigger", orderController.removetrigger)
+orderRouter.get("/download-leaderboard", orderController.Downloadleaderboard)
 export default orderRouter

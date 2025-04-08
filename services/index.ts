@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client"
 import moment from "moment-timezone"
 import { blake2b } from "blakejs"
 import { logger } from "../shared/logger"
+import { Decimal } from "@prisma/client/runtime/library"
 
 const prisma = new PrismaClient()
 export const findInvalidOrderStatus = (orders: any[]): { success: boolean; message?: string } => {
@@ -736,7 +737,7 @@ const processCancellations = async (cancellations: any) => {
           pointsAdjustment = -originalPoints
 
           // await deductPointsForHigherSameDayOrders(uid, orderId, timestampCreated, gameId, same_day_order_count)
-          
+
         } else {
           // Partially cancelled, recalculate points with streak as 0
           const newPoints = await calculatePoints(
@@ -1248,3 +1249,37 @@ export const isDuplicateOrder = async (orderId: string, orderStatus: any, buyerA
 
   return existingOrder !== null
 }
+
+export const downloadleaderboard = async (type: string) => {
+  try {
+    let result;
+    if (type === "daily_top_leaderboard") {
+      result = await prisma.$queryRaw` Select * from daily_top_leaderboard`
+    } else if (type === "weekly_top_leaderboard") {
+      result = await prisma.$queryRaw` Select * from weekly_top_leaderboard`
+    } else {
+      result = await prisma.$queryRaw` Select * from monthly_top_leaderboard`
+    }
+    
+    const cleanResult = convertBigIntToString(result)
+    return { result: cleanResult }
+  } catch (error) {
+    console.log(error)
+    throw new Error("failed to fetch leaderboard")
+  }
+}
+
+const convertBigIntToString = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(convertBigIntToString)
+  } else if (obj && typeof obj === "object") {
+    return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, convertBigIntToString(value)]))
+  } else if (typeof obj === "bigint") {
+    return obj.toString()
+  } else if (obj instanceof Decimal) {
+    return obj.toNumber()  // ✅ converts to plain number
+  } else {
+    return obj
+  }
+}
+

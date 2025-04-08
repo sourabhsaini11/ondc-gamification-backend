@@ -11,6 +11,7 @@ import {
   db,
   removetrigger,
   search2,
+  downloadleaderboard
 } from "../../services"
 import {
   aggregatePointsSummary,
@@ -380,6 +381,31 @@ const orderController = {
       return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
+  
+  Downloadleaderboard: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+     console.log(`Inside Download leaderboard ${_req}`)
+      const choice = _req.query
+      console.log("choide", choice)
+      let type;
+      switch (choice as unknown as string) {
+        case "daily":
+          type = "daily_top_leaderboard"
+          break
+        case "monthly":
+          type = "monthly_top_leaderboard"
+          break
+        default:
+          type = "weekly_top_leaderboard"
+      }
+
+      const leaderboard = await downloadleaderboard(type) 
+      return res.status(200).json({ success: true, data: leaderboard })
+    } catch (error) {
+      console.error("❌ Error retrieving orders:", error)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  }
 }
 
 export default orderController
