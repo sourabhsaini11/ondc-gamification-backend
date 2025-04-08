@@ -94,6 +94,7 @@ const validateOrderTimestamp = (orders: any[]): { success: boolean; message?: st
 export const parseAndStoreCsv = async (
   filePath: string,
   userId: number,
+  buyer_name: string
 ): Promise<{ success: boolean; message: string }> => {
   const records: {
     uid: any
@@ -102,6 +103,7 @@ export const parseAndStoreCsv = async (
     timestamp_created: Date
     timestamp_updated: Date
     buyer_app_id?: any
+    buyer_name : string
     total_price: number
     uploaded_by: number
   }[] = []
@@ -250,6 +252,7 @@ export const parseAndStoreCsv = async (
             timestamp_created: timestampCreated,
             timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])) || timestampCreated, // timestamp_Updated update
             buyer_app_id: String(userId),
+            buyer_name: String(buyer_name),
             total_price: totalPrice,
             uploaded_by: userId,
           })
@@ -1119,6 +1122,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
       timestamp_created: row.timestamp_created,
       timestamp_updated: row.timestamp_updated,
       buyer_app_id: row.buyer_app_id,
+      buyer_name: row.buyer_name,
       total_price: parseFloat(row.total_price || 0),
       uid: row.uid,
       game_id: row.game_id,
@@ -1260,7 +1264,7 @@ export const downloadleaderboard = async (type: string) => {
     } else {
       result = await prisma.$queryRaw` Select * from monthly_top_leaderboard`
     }
-    
+
     const cleanResult = convertBigIntToString(result)
     return { result: cleanResult }
   } catch (error) {
@@ -1283,3 +1287,31 @@ const convertBigIntToString = (obj: any): any => {
   }
 }
 
+// export const insertrewardLedgertesting = async (
+//   game_id: string,
+//   order_id: string,
+//   gmv: number,
+//   points: number,
+//   reason: string,
+//   order_status: string,
+//   order_timestamp_created: any,
+// ) => {
+//   try {
+//     if(points != 0){
+//       await prisma.create.rewardledgertesting({
+//         data:{
+//           game_id:game_id,
+//           order_id:order_id,
+//           gmv:gmv,
+//           points:points,
+//           reason:reason,
+//           order_status:order_status,
+//           order_timestamp_created: order_timestamp_created,
+//         }
+//       })
+//     }
+//   } catch (error) {
+//     console.log(error)
+
+//   }
+// }

@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client"
+// import { rewardledgertesting } from "services"
 const prisma = new PrismaClient()
 
 export const aggregatePointsSummary = async () => {
@@ -63,9 +64,9 @@ export const createOrRefreshLeaderboardView = async () => {
     const previewResults = await prisma.$executeRawUnsafe(`
             CREATE VIEW daily_top_leaderboard AS
             WITH valid_orders AS (
-    SELECT order_id ,buyer_app_id
+    SELECT order_id ,buyer_app_id ,buyer_name
     FROM public."orderData"
-    GROUP BY order_id ,buyer_app_id
+    GROUP BY order_id ,buyer_app_id,buyer_name
     HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
 )
 SELECT
@@ -74,11 +75,12 @@ SELECT
     COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Count distinct order_ids
     COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
     vo.buyer_app_id AS buyer_app_id,
+    vo.buyer_name AS buyer_name,
     '${todayDate}'::DATE AS leaderboard_day_start
 FROM public."rewardledgertesting" r
 JOIN valid_orders vo ON vo.order_id = r.order_id
 WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-GROUP BY r.game_id ,vo.buyer_app_id
+GROUP BY r.game_id ,vo.buyer_app_id,vo.buyer_name
 ORDER BY total_points DESC;
           `)
 
@@ -248,9 +250,9 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
     const previewResults = await prisma.$executeRawUnsafe(`
       CREATE VIEW weekly_top_leaderboard AS
       WITH valid_orders AS (
-          SELECT order_id ,buyer_app_id
+          SELECT order_id ,buyer_app_id ,buyer_name
           FROM public."orderData"
-          GROUP BY order_id ,buyer_app_id
+          GROUP BY order_id ,buyer_app_id ,buyer_name
           HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
       )
       SELECT
@@ -259,12 +261,13 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
           COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           vo.buyer_app_id AS buyer_app_id ,
+          vo.buyer_name AS buyer_name ,
           '${currentWeekStartStr}'::DATE AS leaderboard_week_start
       FROM public."rewardledgertesting" r 
       JOIN valid_orders vo ON vo.order_id = r.order_id
       WHERE DATE(r.created_at) >= '${currentWeekStartStr}'::DATE
         AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-      GROUP BY r.game_id ,vo.buyer_app_id
+      GROUP BY r.game_id ,vo.buyer_app_id,vo.buyer_name
       ORDER BY total_points DESC;
     `)
 
@@ -328,9 +331,9 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
     const previewResults = await prisma.$executeRawUnsafe(`
       CREATE OR REPLACE VIEW monthly_top_leaderboard AS
       WITH valid_orders AS (
-          SELECT order_id ,buyer_app_id
+          SELECT order_id ,buyer_app_id,buyer_name
           FROM public."orderData"
-          GROUP BY order_id ,buyer_app_id
+          GROUP BY order_id ,buyer_app_id,buyer_name
           HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
       )
       SELECT
@@ -339,12 +342,13 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
           COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           vo.buyer_app_id AS buyer_app_id ,
+          vo.buyer_name AS buyer_name,
           '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
       FROM public."rewardledgertesting" r 
       JOIN valid_orders vo ON vo.order_id = r.order_id
       WHERE DATE(r.created_at) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
         AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-      GROUP BY r.game_id , vo.buyer_app_id
+      GROUP BY r.game_id , vo.buyer_app_id,vo.buyer_name
       ORDER BY total_points DESC;
     `)
 
@@ -959,7 +963,7 @@ export const highestGmvandOrder = async () => {
     )
 
     if (winnerStatus.length > 0 && PreviousDayResult[0]?.game_id != winnerStatus[0]?.game_id) {
-      // rewardledgerUpdate(
+      // insertrewardledgertesting(
       //   PreviousDayResult[0]?.game_id,
       //   PreviousDayResult[0]?.last_order_id,
       //   0,
@@ -968,7 +972,7 @@ export const highestGmvandOrder = async () => {
       //   false,
       //   new Date(),
       // )
-      // rewardledgerUpdate(
+      // insertrewardledgertesting(
       //   PreviousDayResult[1]?.game_id,
       //   PreviousDayResult[1]?.last_order_id,
       //   0,
@@ -979,7 +983,7 @@ export const highestGmvandOrder = async () => {
       // )
     }
 
-    // rewardledgerUpdate(
+    // insertrewardledgertesting(
     //   CurrentDayResult[0]?.game_id,
     //   CurrentDayResult[0]?.last_order_id,
     //   0,
