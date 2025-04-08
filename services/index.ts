@@ -125,7 +125,7 @@ export const parseAndStoreCsv = async (
           const emptyFields: string[] = []
 
           // filter csv rows
-          const normalizedRow = Object.fromEntries(
+          const normalizedRow: any = Object.fromEntries(
             Object.entries(row).map(([key, value]) => {
               const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, "_")
 
@@ -198,6 +198,18 @@ export const parseAndStoreCsv = async (
                 message: `Duplicate Order ID: ${orderId} with status ${existingRecord.orderStatus} found multiple times for the same buyer at index:${rowCount}`,
               })
             }
+
+            const activeRecord: any = records?.find(
+              (record) => record.order_id === orderId && record.order_status === "active",
+            )
+
+            if (normalizedRow["total_price"] > activeRecord?.total_price) {
+              return reject({
+                success: false,
+                message: `
+                GMV greater than active order GMV at index:${rowCount} for Order ID ${orderId}`,
+              })
+            }
           }
 
           if (String(normalizedRow["order_status"]).toLowerCase() == "partially_cancelled") {
@@ -259,11 +271,11 @@ export const parseAndStoreCsv = async (
           // Store order_id with its order_status in Map
           recordMap.set(orderId as string, {
             orderStatus: normalizedRow["order_status"] as string,
-            buyerAppId: normalizedRow["buyer_app_id"] as string,
+            buyerAppId: String(userId),
           })
           partialMap.set(orderId as string, {
             orderStatus: normalizedRow["order_status"] as string,
-            buyerAppId: normalizedRow["buyer_app_id"] as string,
+            buyerAppId: String(userId),
           })
         } catch (error: any) {
           logger.info("error", error)
@@ -287,6 +299,23 @@ export const parseAndStoreCsv = async (
                 success: false,
                 message: `Duplicate order ${row.order_id} (${row.order_status}) at row ${rowCount}`,
               })
+            }
+
+            if (row.order_status === "cancelled" || row.order_status === "partially_cancelled") {
+              const existingOrder = await prisma.orderData.findFirst({
+                where: {
+                  order_id: row.order_id,
+                  order_status: "active",
+                  buyer_app_id: row.buyer_app_id,
+                },
+              })
+
+              if (existingOrder && row.total_price > existingOrder.total_price) {
+                return reject({
+                  success: false,
+                  message: `GMV greater than active order GMV for Order ID ${row.order_id}`,
+                })
+              }
             }
           }
 
@@ -360,7 +389,6 @@ export const parseAndStoreCsv = async (
 export const aggregateDailyGmvAndPoints = async () => {
   try {
     logger.info("🔄 Aggregating daily GMV and points...")
-
 
     const uniqueDates: any = (await prisma.$queryRawUnsafe(
       `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date 
@@ -599,7 +627,6 @@ const processNewOrders = async (orders: any) => {
 
         logger.info("sec---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
 
-
         processedData.push({
           ...row,
           phone_number,
@@ -726,7 +753,6 @@ const processCancellations = async (cancellations: any) => {
           return isNaN(num) ? defaultValue : Math.abs(num)
         }
 
-
         // Calculate new GMV
         let newGmv = safeFloat(row.total_price, 0)
 
@@ -737,7 +763,6 @@ const processCancellations = async (cancellations: any) => {
           pointsAdjustment = -originalPoints
 
           // await deductPointsForHigherSameDayOrders(uid, orderId, timestampCreated, gameId, same_day_order_count)
-
         } else {
           // Partially cancelled, recalculate points with streak as 0
           const newPoints = await calculatePoints(
@@ -797,8 +822,6 @@ export const updateHighestGmvAndOrdersForDay = async () => {
         highest_orders_for_day: false,
       },
     })
-
-
 
     const highestGmvResults: any = await prisma.$queryRaw`
       WITH aggregated_orders AS (
@@ -932,7 +955,6 @@ export const updateHighestGmvAndOrdersForDay = async () => {
       }
 
       logger.info("total_orders", total_orders, total_gmv, max_orders, max_gmv)
-
 
       // Step 6: Add the player to the leaderboard if both GMV and orders are highest
       await prisma.orderData.updateMany({
@@ -1085,7 +1107,6 @@ const bulkInsertDataIntoDb = async (data: any) => {
    */
   if (!data || data.length === 0) return
   logger.info("row", JSON.stringify(data[0].uploaded_by))
-
 
   const usersWithExcessiveCancellations = await prisma.orderData.groupBy({
     by: ["game_id"], // Group by user ID & game_id
@@ -1252,7 +1273,7 @@ export const isDuplicateOrder = async (orderId: string, orderStatus: any, buyerA
 
 export const downloadleaderboard = async (type: string) => {
   try {
-    let result;
+    let result
     if (type === "daily_top_leaderboard") {
       result = await prisma.$queryRaw` Select * from daily_top_leaderboard`
     } else if (type === "weekly_top_leaderboard") {
@@ -1260,7 +1281,7 @@ export const downloadleaderboard = async (type: string) => {
     } else {
       result = await prisma.$queryRaw` Select * from monthly_top_leaderboard`
     }
-    
+
     const cleanResult = convertBigIntToString(result)
     return { result: cleanResult }
   } catch (error) {
@@ -1277,9 +1298,8 @@ const convertBigIntToString = (obj: any): any => {
   } else if (typeof obj === "bigint") {
     return obj.toString()
   } else if (obj instanceof Decimal) {
-    return obj.toNumber()  // ✅ converts to plain number
+    return obj.toNumber() // ✅ converts to plain number
   } else {
     return obj
   }
 }
-
