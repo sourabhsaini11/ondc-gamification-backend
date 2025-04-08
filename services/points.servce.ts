@@ -338,7 +338,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
           COALESCE(SUM(r.points), 0) AS total_points,
           COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
-          vo.buyer_app_id AS buyer_app_id
+          vo.buyer_app_id AS buyer_app_id ,
           '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
       FROM public."rewardledgertesting" r 
       JOIN valid_orders vo ON vo.order_id = r.order_id
