@@ -63,9 +63,9 @@ export const createOrRefreshLeaderboardView = async () => {
     const previewResults = await prisma.$executeRawUnsafe(`
             CREATE VIEW daily_top_leaderboard AS
             WITH valid_orders AS (
-    SELECT order_id
+    SELECT order_id ,buyer_app_id
     FROM public."orderData"
-    GROUP BY order_id
+    GROUP BY order_id ,buyer_app_id
     HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
 )
 SELECT
@@ -73,13 +73,15 @@ SELECT
     COALESCE(SUM(r.points), 0) AS total_points,
     COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Count distinct order_ids
     COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
+    vo.buyer_app_id AS buyer_app_id,
     '${todayDate}'::DATE AS leaderboard_day_start
 FROM public."rewardledgertesting" r
+JOIN valid_orders vo ON vo.order_id = r.order_id
 WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-GROUP BY r.game_id
+GROUP BY r.game_id ,vo.buyer_app_id
 ORDER BY total_points DESC;
           `)
-    
+
 
     console.log(`Leaderboard view updated for ${todayDate} with cancellation handling, ${previewResults}`)
     return {
@@ -246,9 +248,9 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
     const previewResults = await prisma.$executeRawUnsafe(`
       CREATE VIEW weekly_top_leaderboard AS
       WITH valid_orders AS (
-          SELECT order_id
+          SELECT order_id ,buyer_app_id
           FROM public."orderData"
-          GROUP BY order_id
+          GROUP BY order_id ,buyer_app_id
           HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
       )
       SELECT
@@ -256,11 +258,13 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
           COALESCE(SUM(r.points), 0) AS total_points,
           COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
+          vo.buyer_app_id AS buyer_app_id ,
           '${currentWeekStartStr}'::DATE AS leaderboard_week_start
       FROM public."rewardledgertesting" r 
+      JOIN valid_orders vo ON vo.order_id = r.order_id
       WHERE DATE(r.created_at) >= '${currentWeekStartStr}'::DATE
         AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-      GROUP BY r.game_id
+      GROUP BY r.game_id ,vo.buyer_app_id
       ORDER BY total_points DESC;
     `)
 
@@ -324,9 +328,9 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
     const previewResults = await prisma.$executeRawUnsafe(`
       CREATE OR REPLACE VIEW monthly_top_leaderboard AS
       WITH valid_orders AS (
-          SELECT order_id
+          SELECT order_id ,buyer_app_id
           FROM public."orderData"
-          GROUP BY order_id
+          GROUP BY order_id ,buyer_app_id
           HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
       )
       SELECT
@@ -334,11 +338,13 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
           COALESCE(SUM(r.points), 0) AS total_points,
           COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
+          vo.buyer_app_id AS buyer_app_id
           '${currentMonthStart.toISOString().split("T")[0]}'::DATE AS leaderboard_month_start
       FROM public."rewardledgertesting" r 
+      JOIN valid_orders vo ON vo.order_id = r.order_id
       WHERE DATE(r.created_at) >= '${currentMonthStart.toISOString().split("T")[0]}'::DATE
         AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
-      GROUP BY r.game_id
+      GROUP BY r.game_id , vo.buyer_app_id
       ORDER BY total_points DESC;
     `)
 
@@ -983,7 +989,7 @@ export const highestGmvandOrder = async () => {
     //   new Date(),
     // )
     // finding orders 
-const result = await prisma.$queryRaw`
+    const result = await prisma.$queryRaw`
   SELECT 
     game_id, 
     DATE (order_timestamp_created),
