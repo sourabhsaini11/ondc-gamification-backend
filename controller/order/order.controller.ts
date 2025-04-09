@@ -43,8 +43,10 @@ const orderController = {
       }
 
       const filePath = req.file.path
-      console.log("req.uiserrrr",req.user?.userId)
-      const result = await parseAndStoreCsv(filePath, req.user?.userId)
+      console.log("req.uiserrrr", req.user?.userId)
+      const name = req.user?.email.split("@")[0]
+      console.log("name", name)
+      const result = await parseAndStoreCsv(filePath, req.user?.userId, name)
 
       if (!result.success) {
         return res.status(400).json({ success: false, message: result.message })
@@ -387,7 +389,7 @@ const orderController = {
     try {
      console.log(`Inside Download leaderboard ${_req}`)
       const choice = _req.query
-      console.log("choide", choice)
+      console.log("leaderboard format selected", choice)
       let type;
       switch (choice as unknown as string) {
         case "daily":

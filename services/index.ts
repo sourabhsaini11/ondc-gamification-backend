@@ -2,8 +2,8 @@ import fs from "fs"
 import csvParser from "csv-parser"
 import { PrismaClient } from "@prisma/client"
 import moment from "moment-timezone"
-import { blake2b } from "blakejs"
 import { logger } from "../shared/logger"
+import { blake2b } from "blakejs"
 import { Decimal } from "@prisma/client/runtime/library"
 
 const prisma = new PrismaClient()
@@ -94,6 +94,7 @@ const validateOrderTimestamp = (orders: any[]): { success: boolean; message?: st
 export const parseAndStoreCsv = async (
   filePath: string,
   userId: number,
+  buyer_name: string
 ): Promise<{ success: boolean; message: string }> => {
   const records: {
     uid: any
@@ -102,6 +103,7 @@ export const parseAndStoreCsv = async (
     timestamp_created: Date
     timestamp_updated: Date
     buyer_app_id?: any
+    buyer_name : string
     total_price: number
     uploaded_by: number
   }[] = []
@@ -262,6 +264,7 @@ export const parseAndStoreCsv = async (
             timestamp_created: timestampCreated,
             timestamp_updated: new Date(String(normalizedRow["timestamp_updated"])) || timestampCreated, // timestamp_Updated update
             buyer_app_id: String(userId),
+            buyer_name: String(buyer_name),
             total_price: totalPrice,
             uploaded_by: userId,
           })
@@ -595,14 +598,21 @@ const processNewOrders = async (orders: any) => {
             uidFirstOrderTimestamp[uid] = String(new Date(timestampCreated).getUTCHours()).padStart(2, "0")
           }
 
-          const fullUid = uid
+          // const fullUid = uid
 
           lastStreakDate = timestampCreated
           //GAME ID FORMATION
-          const temp_id = `${fullUid}`
+          // const timestamp = timestampCreated
+          const hours = String(new Date(timestampCreated).getUTCHours()) // Ensures valid ISO format
+          const minutes = String(new Date(timestampCreated).getUTCMinutes())
+          console.log("uid", uid, "hours", hours, "minutes", minutes)
+          const result = uid.slice(3, 11) + hours + minutes
+          console.log("result", result)
+          const temp_id = `${result}`
           const hash = blake2b(temp_id, undefined, 64) // 64-byte (512-bit) hash
           const hashedId = Buffer.from(hash).toString("hex")
           game_id = hashedId
+
           logger.info(`The GameID is: ${game_id}`)
         }
 
@@ -1140,6 +1150,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
       timestamp_created: row.timestamp_created,
       timestamp_updated: row.timestamp_updated,
       buyer_app_id: row.buyer_app_id,
+      buyer_name: row.buyer_name,
       total_price: parseFloat(row.total_price || 0),
       uid: row.uid,
       game_id: row.game_id,
