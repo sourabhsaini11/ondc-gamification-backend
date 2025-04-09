@@ -4,7 +4,7 @@ import {
   DayWinnerUpdate,
   WeeklyWinnerUpdate,
   MonthlyWinnerUpdate,
-  highestGmvandOrder,
+  highestGmvandhighestOrder,
   // , checkWeeklyWinnerCancellation, checkDailyWinnerCancellation
 } from "./points.servce"
 // import { aggregateDailyGmvAndPoints } from "./index"
@@ -31,7 +31,7 @@ export const aggregatePointsCron = () => {
       async () => {
         try {
           console.log(`*=== Running Highest GMV AND ORDER ===*`)
-          await highestGmvandOrder()
+          await highestGmvandhighestOrder()
           console.log(`*=== Running Highest GMV AND ORDER ===*`)
         } catch (error) {
           console.error(`*=== Error in Weekly Winner Cancellation Cron Job: ${error} ===*`)

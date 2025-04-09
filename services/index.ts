@@ -103,7 +103,7 @@ export const parseAndStoreCsv = async (
     timestamp_created: Date
     timestamp_updated: Date
     buyer_app_id?: any
-    buyer_name : string
+    buyer_name: string
     total_price: number
     uploaded_by: number
   }[] = []
@@ -1170,8 +1170,25 @@ const bulkInsertDataIntoDb = async (data: any) => {
     const insertedData = await prisma.orderData.createMany({ data: formattedData })
     logger.info("The inserted Data is: ", insertedData)
     logger.info(`Bulk data inserted successfully.`)
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Error inserting bulk data`, error)
+
+    const message = error?.meta?.message || error?.message;
+
+    if (message) {
+      // Optional: You could extract specifically the part that starts with "ERR_CODE:"
+      const errCodeIndex = message.indexOf("ERR_CODE:")
+      if (errCodeIndex !== -1) {
+        const extractedMessage = message.slice(errCodeIndex)
+        console.error("Extracted Error:", extractedMessage)
+        let temp = `${extractedMessage}`
+        console.log("temp", temp)
+        temp = temp.split(":")[2].split(",")[0]
+        throw new Error(temp)
+      } else {
+        console.error("Error Message:", message)
+      }
+    }
   }
 }
 
@@ -1312,5 +1329,34 @@ const convertBigIntToString = (obj: any): any => {
     return obj.toNumber() // ✅ converts to plain number
   } else {
     return obj
+  }
+}
+
+export const insertrewardledgertesting = async (
+  game_id: string,
+  order_id: string,
+  gmv: number,
+  points: number,
+  reason: string,
+  order_status: string,
+  order_timestamp_created: Date,
+) => {
+  try {
+    logger.info("Inserting in Rewardledgertesting")
+    const result = await prisma.rewardLedgerTesting.create({
+      data: {
+        game_id: game_id,
+        order_id: order_id,
+        gmv: gmv,
+        points: points,
+        reason: reason,
+        order_status: order_status,
+        order_timestamp_created: order_timestamp_created
+      }
+    })
+    return { result }
+  } catch (error) {
+    console.error("error at inserting in rewardledgertesting", error)
+    throw new Error("failed to Insert in rewardledger")
   }
 }

@@ -1,4 +1,6 @@
 import { PrismaClient } from "@prisma/client"
+// import { insertrewardledgertesting } from "services"
+import { insertrewardledgertesting } from "./index"
 // import { rewardledgertesting } from "services"
 const prisma = new PrismaClient()
 
@@ -925,86 +927,199 @@ export const checkWeeklyWinnerCancellation = async () => {
   }
 }
 
-export const highestGmvandOrder = async () => {
+export const highestGmvandhighestOrder = async () => {
   try {
-    //Today Winner
-    const CurrentDayWinnerquery = `
-    Select game_id ,SUM(gmv) from rewardledgertesting where order_status!= 'cancelled' and DATE(order_timestamp_created) = CURRENT_DATE GROUP BY game_id;
-  `
-    //Previous day Updated top two position players for comparing because may be if someone has cancelled order here we will get update points
-    const PreviousDayWinnerquery = `
+    const todayDate = new Date()
+    // today highest order and highest gmv
+    const highestOrders: any = await prisma.$queryRaw`
+      WITH daily_orders AS (
     SELECT 
-        game_id, 
-        SUM(gmv)
-    FROM rewardledgertesting 
-    WHERE DATE(order_timestamp_created) = CURRENT_DATE - INTERVAL '1 day'
-    and order_status!= 'cancelled'
-    GROUP BY game_id
-  `
-    const CurrentDayResult: any = await prisma.$queryRawUnsafe(CurrentDayWinnerquery)
+    game_id,
+    DATE(order_timestamp_created) AS order_date,
+    COUNT(DISTINCT CASE WHEN order_status = 'active' THEN order_id END)
+      - COUNT(DISTINCT CASE WHEN order_status = 'cancelled' THEN order_id END) AS total_orders
+FROM rewardledgertesting
+WHERE 
+    DATE(order_timestamp_created) = DATE(${todayDate})
+GROUP BY game_id, DATE(order_timestamp_created)
+ORDER BY total_orders desc limit 1
+),
 
-    const PreviousDayResult: any = await prisma.$queryRawUnsafe(PreviousDayWinnerquery)
+top_game_per_day AS (
+    SELECT 
+        game_id,
+        order_date,
+        total_orders
+    FROM daily_orders
+    ORDER BY total_orders DESC
+    LIMIT 1
+),
 
-    //getting the winner of previous day that was already stored in DailyWinner
-    const winnerStatus: any = await prisma.$queryRawUnsafe(`
-        SELECT game_id
-   FROM dailyWinner
-   WHERE winning_date >= CURRENT_DATE - INTERVAL '1 day' -- Start of the previous day
-     AND winning_date < CURRENT_DATE  and position=1 and type='daily' 
-      `)
+latest_order AS (
+    SELECT 
+        rl.order_id,
+        rl.order_timestamp_created,
+        rl.game_id,
+        tgp.total_orders
+    FROM rewardledgertesting rl
+    JOIN top_game_per_day tgp
+      ON rl.game_id = tgp.game_id
+     AND DATE(rl.order_timestamp_created) = tgp.order_date
+    WHERE rl.order_status != 'cancelled'
+    ORDER BY rl.order_timestamp_created DESC
+    LIMIT 1
+)
 
-    console.log(
-      "winnerStatus",
-      winnerStatus,
-      "PreviousDayResult",
-      PreviousDayResult,
-      "CurrentDayResult",
-      CurrentDayResult,
+SELECT * FROM latest_order
+      `
+    console.log("highest Order query Passed")
+    console.log("highestORDER", highestOrders)
+
+
+    highestOrders.length > 0 &&
+      insertrewardledgertesting(
+        highestOrders[0]?.game_id,
+        highestOrders[0]?.order_id,
+        0,
+        100,
+        `${highestOrders[0]?.total_orders} with highest Orders in ${todayDate}`,
+        "assigned",
+        highestOrders[0]?.order_timestamp_created,
+      )
+
+    const highestGMV: any = await prisma.$queryRaw`
+       WITH daily_orders AS  (  SELECT 
+    game_id,
+    DATE(order_timestamp_created) AS order_date,
+   SUM(CASE WHEN order_status = 'active' OR order_status='assigned' THEN COALESCE(gmv, 0) ELSE 0 END)
+      + SUM(CASE WHEN order_status = 'cancelled' THEN COALESCE(gmv, 0) ELSE 0 END) AS total_gmv
+FROM rewardledgertesting
+WHERE 
+    DATE(order_timestamp_created) = DATE(${todayDate})
+GROUP BY game_id, DATE(order_timestamp_created)
+ORDER BY total_gmv desc limit 1)
+,
+top_game_per_day AS (
+    SELECT 
+        game_id,
+        order_date,
+        total_gmv
+    FROM daily_orders
+    ORDER BY total_gmv DESC
+    LIMIT 1
+),
+
+latest_order AS (
+    SELECT 
+        rl.order_id,
+        rl.order_timestamp_created,
+        rl.game_id,
+        tgp.total_gmv
+    FROM rewardledgertesting rl
+    JOIN top_game_per_day tgp
+      ON rl.game_id = tgp.game_id
+     AND DATE(rl.order_timestamp_created) = tgp.order_date
+    WHERE rl.order_status != 'cancelled'
+    ORDER BY rl.order_timestamp_created DESC
+    LIMIT 1
+)
+
+SELECT * FROM latest_order
+      `
+
+    console.log("highest GMV query Passed")
+    console.log("highestGMV", highestGMV)
+
+    highestGMV.length > 0 &&
+      insertrewardledgertesting(
+        highestGMV[0]?.game_id,
+        highestGMV[0]?.order_id,
+        0,
+        100,
+        `${highestGMV[0]?.total_gmv} with highest gmv in ${todayDate}`,
+        "assigned",
+        highestGMV[0]?.order_timestamp_created,
     )
 
-    if (winnerStatus.length > 0 && PreviousDayResult[0]?.game_id != winnerStatus[0]?.game_id) {
-      // insertrewardledgertesting(
-      //   PreviousDayResult[0]?.game_id,
-      //   PreviousDayResult[0]?.last_order_id,
-      //   0,
-      //   -100,
-      //   "Count of highest order changed after a day",
-      //   false,
-      //   new Date(),
-      // )
-      // insertrewardledgertesting(
-      //   PreviousDayResult[1]?.game_id,
-      //   PreviousDayResult[1]?.last_order_id,
-      //   0,
-      //   100,
-      //   "Count of highest order changed after a day",
-      //   true,
-      //   new Date(),
-      // )
-    }
 
-    // insertrewardledgertesting(
-    //   CurrentDayResult[0]?.game_id,
-    //   CurrentDayResult[0]?.last_order_id,
-    //   0,
-    //   100,
-    //   "Points for highest order in a day",
-    //   true,
-    //   new Date(),
-    // )
-    // finding orders 
-    const result = await prisma.$queryRaw`
-  SELECT 
-    game_id, 
-    DATE (order_timestamp_created),
-    COUNT(DISTINCT CASE WHEN order_status = 'active' THEN order_id END)
-    - COUNT(DISTINCT CASE WHEN order_status = 'cancelled' THEN order_id END) AS order_count
-  FROM public.rewardledgertesting 
-  GROUP BY game_id , DATE(order_timestamp_created)
-  ORDER BY order_count DESC;
-`;
+    //Today Winner
+    //     const CurrentDayWinnerquery = `
+    //     Select game_id ,SUM(gmv) from rewardledgertesting where order_status!= 'cancelled' and DATE(order_timestamp_created) = CURRENT_DATE GROUP BY game_id;
+    //   `
+    //     //Previous day Updated top two position players for comparing because may be if someone has cancelled order here we will get update points
+    //     const PreviousDayWinnerquery = `
+    //     SELECT 
+    //         game_id, 
+    //         SUM(gmv)
+    //     FROM rewardledgertesting 
+    //     WHERE DATE(order_timestamp_created) = CURRENT_DATE - INTERVAL '1 day'
+    //     and order_status!= 'cancelled'
+    //     GROUP BY game_id
+    //   `
+    //     const CurrentDayResult: any = await prisma.$queryRawUnsafe(CurrentDayWinnerquery)
 
-    console.log("result", result)
+    //     const PreviousDayResult: any = await prisma.$queryRawUnsafe(PreviousDayWinnerquery)
+
+    //     //getting the winner of previous day that was already stored in DailyWinner
+    //     const winnerStatus: any = await prisma.$queryRawUnsafe(`
+    //         SELECT game_id
+    //    FROM dailyWinner
+    //    WHERE winning_date >= CURRENT_DATE - INTERVAL '1 day' -- Start of the previous day
+    //      AND winning_date < CURRENT_DATE  and position=1 and type='daily'
+    //       `)
+
+    //     console.log(
+    //       "winnerStatus",
+    //       winnerStatus,
+    //       "PreviousDayResult",
+    //       PreviousDayResult,
+    //       "CurrentDayResult",
+    //       CurrentDayResult,
+    //     )
+
+    //     if (winnerStatus.length > 0 && PreviousDayResult[0]?.game_id != winnerStatus[0]?.game_id) {
+    //       insertrewardledgertesting(
+    //         PreviousDayResult[0]?.game_id,
+    //         PreviousDayResult[0]?.last_order_id,
+    //         0,
+    //         -100,
+    //         "Count of highest order changed after a day",
+    //         "false",
+    //         new Date(),
+    //       )
+    //       insertrewardledgertesting(
+    //         PreviousDayResult[1]?.game_id,
+    //         PreviousDayResult[1]?.last_order_id,
+    //         0,
+    //         100,
+    //         "Count of highest order changed after a day",
+    //         "true",
+    //         new Date(),
+    //       )
+    //     }
+
+    //     insertrewardledgertesting(
+    //       CurrentDayResult[0]?.game_id,
+    //       CurrentDayResult[0]?.last_order_id,
+    //       0,
+    //       100,
+    //       "Points for highest order in a day",
+    //       "true",
+    //       new Date(),
+    //     )
+    //     // finding orders 
+    //     const result = await prisma.$queryRaw`
+    //   SELECT 
+    //     game_id, 
+    //     DATE (order_timestamp_created),
+    //     COUNT(DISTINCT CASE WHEN order_status = 'active' THEN order_id END)
+    //     - COUNT(DISTINCT CASE WHEN order_status = 'cancelled' THEN order_id END) AS order_count
+    //   FROM public.rewardledgertesting 
+    //   GROUP BY game_id , DATE(order_timestamp_created)
+    //   ORDER BY order_count DESC;
+    // `;
+
+    //     console.log("result", result)
   } catch (error: any) {
     console.log("error", error)
   }
@@ -1168,3 +1283,13 @@ export const getMonthlyLeaderboardData2 = async () => {
     }
   }
 }
+
+// export const DailyWinnerCancellation = async () => {
+//   try {
+//     //check for the past day winner in daily winner
+//     //and check for the cancelled order that has been created previous day
+//     //now sum the total points with second position holder if there is change in position then deduct 100 points otherwise dont do it+
+//   } catch (error) {
+//     console.log(error)
+//   }
+// }
