@@ -43,7 +43,7 @@ const orderController = {
       }
 
       const filePath = req.file.path
-      console.log("req.uiserrrr", req.user?.userId)
+
       const name = req.user?.email.split("@")[0]
       console.log("name", name)
       const result = await parseAndStoreCsv(filePath, req.user?.userId, name)
