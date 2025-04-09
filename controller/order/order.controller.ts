@@ -389,7 +389,7 @@ const orderController = {
     try {
      console.log(`Inside Download leaderboard ${_req}`)
       const choice = _req.query
-      console.log("choide", choice)
+      console.log("leaderboard format selected", choice)
       let type;
       switch (choice as unknown as string) {
         case "daily":
