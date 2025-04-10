@@ -1,7 +1,5 @@
 import { PrismaClient } from "@prisma/client"
-// import { insertrewardledgertesting } from "services"
 import { insertrewardledgertesting } from "./index"
-// import { rewardledgertesting } from "services"
 const prisma = new PrismaClient()
 
 export const aggregatePointsSummary = async () => {
@@ -136,118 +134,6 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
     }
 
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS weekly_top_leaderboard;`)
-
-    // Create or refresh the weekly leaderboard view
-    //     const previewResults = await prisma.$executeRawUnsafe(`
-    //      CREATE OR REPLACE VIEW weekly_top_leaderboard AS
-    // WITH all_orders AS (
-    //     -- Get all orders from the current week
-    //     SELECT
-    //         game_id,
-    //         order_id,
-    //         points,
-    //         gmv,
-    //         order_status,
-    //         timestamp_created
-    //     FROM public."orderData"
-    //     WHERE timestamp_created >= DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)
-    //       AND timestamp_created < DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP) + INTERVAL '7 days'
-    // ),
-    // created_orders AS (
-    //     -- Get orders where order_status is 'created'
-    //     SELECT order_id, game_id, points, gmv
-    //     FROM all_orders
-    //     WHERE order_status = 'created'
-    // ),
-    // cancelled_orders AS (
-    //     -- Get orders where order_status is 'cancelled'
-    //     SELECT order_id, game_id
-    //     FROM all_orders
-    //     WHERE order_status = 'cancelled'
-    // ),
-    // valid_orders AS (  -- ✅ Define valid_orders
-    //     SELECT
-    //         c.game_id,
-    //         c.order_id,
-    //         c.points,
-    //         c.gmv,
-    //         1 AS valid_order  -- Mark these as valid orders
-    //     FROM created_orders c
-    //     LEFT JOIN cancelled_orders co ON c.order_id = co.order_id
-    //     WHERE co.order_id IS NULL  -- Exclude cancelled orders
-    // )
-    // SELECT
-    //     game_id,
-    //     COUNT(valid_order) AS total_orders,  -- Count only valid orders
-    //     SUM(points)::DOUBLE PRECISION AS total_points,
-    //     SUM(gmv)::BIGINT AS total_gmv,
-    //     DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)::DATE AS leaderboard_week_start
-    // FROM valid_orders  -- ✅ Now valid_orders exists
-    // GROUP BY game_id
-    // HAVING SUM(points) >= 0  -- Exclude users with negative points
-    // ORDER BY total_points DESC;
-
-    //     `)
-
-    //     const previewResults = await prisma.$executeRawUnsafe(`
-    // CREATE OR REPLACE VIEW weekly_top_leaderboard AS
-    //  WITH all_orders AS (
-    //      -- Get all orders from the current week
-    //      SELECT
-    //          game_id,
-    //          order_id,
-    //          gmv,
-    //          order_status,
-    //          timestamp_created
-    //      FROM public."orderData"
-    //      WHERE timestamp_created >= DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)
-    //        AND timestamp_created < DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP) + INTERVAL '7 days'
-    //  ),
-    //  created_orders AS (
-    //      -- Get orders where order_status is 'created'
-    //      SELECT order_id, game_id, gmv
-    //      FROM all_orders
-    //      WHERE order_status = 'created'
-    //  ),
-    //  cancelled_orders AS (
-    //      -- Get orders where order_status is 'cancelled'
-    //      SELECT order_id, game_id
-    //      FROM all_orders
-    //      WHERE order_status = 'cancelled'
-    //  ),
-    //  valid_orders AS (
-    //      -- Define valid orders by excluding cancelled ones
-    //      SELECT
-    //          c.game_id,
-    //          c.order_id,
-    //          c.gmv,
-    //          1 AS valid_order  -- Mark these as valid orders
-    //      FROM created_orders c
-    //      LEFT JOIN cancelled_orders co ON c.order_id = co.order_id
-    //      WHERE co.order_id IS NULL  -- Exclude cancelled orders
-    //  ),
-    //  rewardledger_points AS (
-    //      -- Get the sum of points from the rewardLedger for the same period
-    //      SELECT
-    //          game_id,
-    //          SUM(points)::BIGINT AS total_points  -- ✅ Explicitly cast to BIGINT
-    //      FROM public."rewardledger"
-    //      WHERE created_at >= DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)
-    //        AND created_at < DATE_TRUNC('week','${currentWeekStartStr}'::TIMESTAMP) + INTERVAL '7 days'
-    //      GROUP BY game_id
-    //  )
-    //  SELECT
-    //      vo.game_id,  -- ✅ Fixed alias reference
-    //      COUNT(vo.valid_order) AS total_orders,  -- Count only valid orders
-    //      COALESCE(rp.total_points, 0) AS total_points,  -- ✅ No need to cast again, already BIGINT
-    //      SUM(vo.gmv)::BIGINT AS total_gmv,
-    //      DATE_TRUNC('week', '${currentWeekStartStr}'::TIMESTAMP)::DATE AS leaderboard_week_start
-    //  FROM valid_orders vo
-    //  LEFT JOIN rewardledger_points rp ON vo.game_id = rp.game_id  -- ✅ Join with rewardledger
-    //  GROUP BY vo.game_id, rp.total_points
-    //  HAVING COALESCE(rp.total_points, 0) >= 0  -- Exclude users with negative points
-    //  ORDER BY total_points DESC;
-    //     `)
 
     const previewResults = await prisma.$executeRawUnsafe(`
       CREATE VIEW weekly_top_leaderboard AS
@@ -637,17 +523,7 @@ END;
 $$ LANGUAGE plpgsql;
         `)
 
-    // await prisma.$executeRawUnsafe(`
-    //       INSERT INTO "orderData" (game_id, points, gmv, order_status, timestamp_created)
-    //       VALUES (123, 50, 1000, 'created', NOW());
-    //     `)
-
     console.log("✅ Leaderboard update function created.", res)
-
-    // Remove existing trigger if it exists
-    // await prisma.$executeRawUnsafe(`
-    //     DROP TRIGGER IF EXISTS update_leaderboard_trigger ON "orderData";
-    //   `)
 
     console.log("🔄 Old leaderboard trigger removed (if it existed).")
 
@@ -668,60 +544,6 @@ $$ LANGUAGE plpgsql;
   }
 }
 
-export const rewardLedgerTrigger = async () => {
-  try {
-    console.log("🔄 Setting up rewardledger trigger...")
-
-    // Drop existing functions and triggers
-    await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS update_leaderboard_manual CASCADE;`)
-    await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS rewardledger_function CASCADE;`)
-    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS rewardledger_trigger ON "orderData";`)
-
-    // Create or replace the function
-    await prisma.$executeRawUnsafe(`
-      CREATE OR REPLACE FUNCTION rewardledger_function()
-RETURNS TRIGGER AS $$
-DECLARE
-    order_count INT;
-BEGIN
-    -- Calculate the order's position in the sequence for the day
-    SELECT COUNT(*) INTO order_count
-    FROM "orderData"
-    WHERE game_id = NEW.game_id
-      AND timestamp_created >= DATE(NEW.timestamp_created)
-      AND timestamp_created < DATE(NEW.timestamp_created) + INTERVAL '1 day'
-      AND order_status = 'created'
-      AND (timestamp_created < NEW.timestamp_created OR 
-          (timestamp_created = NEW.timestamp_created AND order_id <= NEW.order_id));
-
-    -- Insert reward for the new order only
-    -- INSERT INTO rewardledger (order_id, game_id, points, reason, updated_at)
-    -- VALUES (NEW.order_id, NEW.game_id, order_count * 5, 'Daily order', NOW());
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-    `)
-
-    console.log("✅ RewardLedger trigger function created successfully!")
-
-    // Remove old rewardledger trigger if it exists
-    await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trigger_reward_ledger ON "orderData";`)
-    console.log("🔄 Old rewardledger trigger removed (if it existed).")
-
-    // Create the new rewardledger trigger
-    await prisma.$executeRawUnsafe(`
-      CREATE TRIGGER rewardledger_trigger
-      BEFORE INSERT OR UPDATE OR DELETE ON "orderData"
-      FOR EACH ROW
-      EXECUTE FUNCTION rewardledger_function();
-    `)
-
-    console.log("✅ New rewardledger trigger created successfully.")
-  } catch (error) {
-    console.error("❌ Error setting up rewardledger trigger:", error)
-  }
-}
 
 export const DayWinnerUpdate = async () => await storePastWinners("daily_top_leaderboard", "daily")
 export const WeeklyWinnerUpdate = async () => await storePastWinners("weekly_top_leaderboard", "weekly")
@@ -1125,43 +947,6 @@ SELECT * FROM latest_order
   }
 }
 
-export const PointsAssignedforhighestGmv = async () => {
-  try {
-    const highestGmvfordayquery = `
-    WITH gmv_summary AS (
-    SELECT 
-        game_id, 
-        SUM(gmv) / 2 AS half_gmv, -- Calculate sum of GMV and divide by 2
-        MAX(created_at) AS last_created_at, -- Get the latest created_at timestamp
-        (ARRAY_AGG(order_id ORDER BY created_at DESC))[1] AS last_order_id -- Get the last order_id
-    FROM rewardledger
-    WHERE DATE(created_at) = CURRENT_DATE -- Filter for the current day
-    GROUP BY game_id
-),
-ranked_gmv AS (
-    SELECT 
-        game_id, 
-        half_gmv, 
-        last_order_id, 
-        last_created_at,
-        DENSE_RANK() OVER (ORDER BY half_gmv DESC) AS rank -- Rank by half_gmv
-    FROM gmv_summary
-)
-SELECT 
-    game_id, 
-    half_gmv, 
-    last_order_id, 
-    last_created_at
-FROM ranked_gmv
-WHERE rank = 1; -- Select the row(s) with the maximum half_gmv
-    `
-    const result: any = await prisma.$executeRawUnsafe(highestGmvfordayquery)
-    console.log(result)
-  } catch (error) {
-    console.log(error)
-  }
-}
-
 export const fetchLeaderboardForWeek2 = async (date: string) => {
   try {
     const startDate = new Date(date)
@@ -1283,13 +1068,3 @@ export const getMonthlyLeaderboardData2 = async () => {
     }
   }
 }
-
-// export const DailyWinnerCancellation = async () => {
-//   try {
-//     //check for the past day winner in daily winner
-//     //and check for the cancelled order that has been created previous day
-//     //now sum the total points with second position holder if there is change in position then deduct 100 points otherwise dont do it+
-//   } catch (error) {
-//     console.log(error)
-//   }
-// }

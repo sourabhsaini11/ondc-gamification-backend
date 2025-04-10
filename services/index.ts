@@ -94,7 +94,7 @@ const validateOrderTimestamp = (orders: any[]): { success: boolean; message?: st
 export const parseAndStoreCsv = async (
   filePath: string,
   userId: number,
-  buyer_name: string
+  buyer_name: string,
 ): Promise<{ success: boolean; message: string }> => {
   const records: {
     uid: any
@@ -1173,7 +1173,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
   } catch (error: any) {
     console.error(`Error inserting bulk data`, error)
 
-    const message = error?.meta?.message || error?.message;
+    const message = error?.meta?.message || error?.message
 
     if (message) {
       // Optional: You could extract specifically the part that starts with "ERR_CODE:"
@@ -1351,8 +1351,8 @@ export const insertrewardledgertesting = async (
         points: points,
         reason: reason,
         order_status: order_status,
-        order_timestamp_created: order_timestamp_created
-      }
+        order_timestamp_created: order_timestamp_created,
+      },
     })
     return { result }
   } catch (error) {

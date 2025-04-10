@@ -23,7 +23,6 @@ orderRouter.get("/create/month-leaderboard", orderController.createOrRefreshMont
 orderRouter.get("/view/leaderboard", orderController.fetchLeaderboardData)
 orderRouter.get("/uploads", authenticate, orderController.getUserUploads)
 orderRouter.get("/download-csv", authenticate, orderController.downloadCSV)
-orderRouter.get("/rewardledger", orderController.rewardledger)
 orderRouter.get("/rewardledgertesting", orderController.rewardledgertesting)
 orderRouter.get("/db", orderController.db)
 orderRouter.get("/removetrigger", orderController.removetrigger)
