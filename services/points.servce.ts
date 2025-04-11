@@ -1,10 +1,17 @@
-import { PrismaClient } from "@prisma/client"
+import { Leaderboard, PrismaClient } from "@prisma/client"
 import { insertrewardledgertesting } from "./index"
 const prisma = new PrismaClient()
 
+type aggregatedData = {
+  game_id: string
+  total_points: string
+  total_orders: string
+  total_gmv: string
+}
+
 export const aggregatePointsSummary = async () => {
   try {
-    const aggregatedData: any = await prisma.$queryRaw`
+    const aggregatedData: aggregatedData[] = await prisma.$queryRaw`
             SELECT game_id, 
                    SUM(points) AS total_points, 
                    COUNT(order_id) AS total_orders, 
@@ -60,7 +67,6 @@ export const createOrRefreshLeaderboardView = async () => {
     // Create or replace the daily leaderboard view
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS daily_top_leaderboard;`)
 
-
     const previewResults = await prisma.$executeRawUnsafe(`
             CREATE VIEW daily_top_leaderboard AS
             WITH valid_orders AS (
@@ -83,7 +89,6 @@ WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-can
 GROUP BY r.game_id ,vo.buyer_app_id,vo.buyer_name
 ORDER BY total_points DESC;
           `)
-
 
     console.log(`Leaderboard view updated for ${todayDate} with cancellation handling, ${previewResults}`)
     return {
@@ -158,7 +163,6 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
       GROUP BY r.game_id ,vo.buyer_app_id,vo.buyer_name
       ORDER BY total_points DESC;
     `)
-
 
     console.log(`Weekly leaderboard view updated for the week starting ${currentWeekStartStr}., ${previewResults}`)
     return {
@@ -258,13 +262,13 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
 
 export const getDailyLeaderboardData = async () => {
   try {
-    const leaderboardData: any = await prisma.$queryRaw`
+    const leaderboardData: Leaderboard[] = await prisma.$queryRaw`
             SELECT * FROM daily_top_leaderboard 
             ORDER BY total_points DESC;
           `
 
     // Convert BigInt values to strings to avoid serialization issues
-    const updatedData = leaderboardData.map((row: any) => ({
+    const updatedData = leaderboardData.map((row: Leaderboard) => ({
       ...row,
       total_orders: row.total_orders.toString(),
       total_gmv: row.total_gmv.toString(),
@@ -287,12 +291,12 @@ export const getWeeklyLeaderboardData = async () => {
   try {
     console.log("Fetching weekly leaderboard data...")
 
-    const leaderboardData: any = await prisma.$queryRaw`
+    const leaderboardData: Leaderboard[] = await prisma.$queryRaw`
           SELECT * FROM weekly_top_leaderboard
           ORDER BY total_points DESC;
         `
 
-    const updatedData = leaderboardData.map((row: any) => ({
+    const updatedData = leaderboardData.map((row: Leaderboard) => ({
       ...row,
       total_points: row.total_points.toString(),
       total_orders: row.total_orders.toString(),
@@ -316,7 +320,7 @@ export const getWeeklyLeaderboardData = async () => {
 
 export const getAllTimeLeaders = async () => {
   try {
-    const leaderboardData: any = await prisma.$queryRaw`
+    const leaderboardData: Leaderboard[] = await prisma.$queryRaw`
   WITH valid_orders AS (
       SELECT order_id
       FROM public."orderData"
@@ -334,7 +338,7 @@ export const getAllTimeLeaders = async () => {
   ORDER BY total_points DESC;
 `
 
-    const updatedData = leaderboardData.map((row: any) => ({
+    const updatedData = leaderboardData.map((row: Leaderboard) => ({
       ...row,
       total_orders: row.total_orders.toString(),
       total_points: row.total_points.toString(),
@@ -356,12 +360,12 @@ export const getAllTimeLeaders = async () => {
 
 export const getMonthlyLeaderboardData = async () => {
   try {
-    const leaderboardData: any = await prisma.$queryRaw`
+    const leaderboardData: Leaderboard[] = await prisma.$queryRaw`
           SELECT * FROM monthly_top_leaderboard 
           ORDER BY total_points DESC;
         `
 
-    const updatedData = leaderboardData.map((row: any) => ({
+    const updatedData = leaderboardData.map((row: Leaderboard) => ({
       ...row,
       total_orders: row.total_orders.toString(),
       total_points: row.total_points.toString(),
@@ -385,7 +389,7 @@ export const getLeaderboardByDate = async (date: string) => {
   try {
     const startDate = new Date(date).toISOString().split("T")[0]
 
-    const leaderboard: any = await prisma.$queryRaw`
+    const leaderboard: Leaderboard[] = await prisma.$queryRaw`
       WITH valid_orders AS (
           SELECT order_id
           FROM public."orderData"
@@ -405,7 +409,7 @@ export const getLeaderboardByDate = async (date: string) => {
       ORDER BY total_points DESC;
     `
 
-    const formattedLeaderboard = leaderboard.map((entry: any) => ({
+    const formattedLeaderboard = leaderboard.map((entry: Leaderboard) => ({
       ...entry,
       total_orders: Number(entry.total_orders),
       total_gmv: Number(entry.total_gmv),
@@ -436,7 +440,7 @@ export const fetchLeaderboardForWeek = async (date: string) => {
 
     console.log(`Fetching leaderboard for the week starting: ${currentWeekStartStr}`)
 
-    const leaderboard: any = await prisma.$queryRaw`
+    const leaderboard: Leaderboard[] = await prisma.$queryRaw`
       WITH valid_orders AS (
           SELECT order_id
           FROM public."orderData"
@@ -457,7 +461,7 @@ export const fetchLeaderboardForWeek = async (date: string) => {
       ORDER BY total_points DESC;
     `
 
-    const formattedLeaderboard = leaderboard.map((entry: any) => ({
+    const formattedLeaderboard = leaderboard.map((entry: Leaderboard) => ({
       ...entry,
       total_orders: Number(entry.total_orders),
       total_gmv: Number(entry.total_gmv),
@@ -544,14 +548,13 @@ $$ LANGUAGE plpgsql;
   }
 }
 
-
 export const DayWinnerUpdate = async () => await storePastWinners("daily_top_leaderboard", "daily")
 export const WeeklyWinnerUpdate = async () => await storePastWinners("weekly_top_leaderboard", "weekly")
 export const MonthlyWinnerUpdate = async () => await storePastWinners("monthly_top_leaderboard", "monthly")
 
 const storePastWinners = async (leaderboardTable: string, type: string) => {
   try {
-    const results: any = await prisma.$queryRawUnsafe(
+    const results: Leaderboard[] = await prisma.$queryRawUnsafe(
       `SELECT * FROM ${leaderboardTable} ORDER BY total_points DESC LIMIT 3`,
     )
 
@@ -797,7 +800,6 @@ SELECT * FROM latest_order
     console.log("highest Order query Passed")
     console.log("highestORDER", highestOrders)
 
-
     highestOrders.length > 0 &&
       insertrewardledgertesting(
         highestOrders[0]?.game_id,
@@ -861,87 +863,7 @@ SELECT * FROM latest_order
         `${highestGMV[0]?.total_gmv} with highest gmv in ${todayDate}`,
         "assigned",
         highestGMV[0]?.order_timestamp_created,
-    )
-
-
-    //Today Winner
-    //     const CurrentDayWinnerquery = `
-    //     Select game_id ,SUM(gmv) from rewardledgertesting where order_status!= 'cancelled' and DATE(order_timestamp_created) = CURRENT_DATE GROUP BY game_id;
-    //   `
-    //     //Previous day Updated top two position players for comparing because may be if someone has cancelled order here we will get update points
-    //     const PreviousDayWinnerquery = `
-    //     SELECT 
-    //         game_id, 
-    //         SUM(gmv)
-    //     FROM rewardledgertesting 
-    //     WHERE DATE(order_timestamp_created) = CURRENT_DATE - INTERVAL '1 day'
-    //     and order_status!= 'cancelled'
-    //     GROUP BY game_id
-    //   `
-    //     const CurrentDayResult: any = await prisma.$queryRawUnsafe(CurrentDayWinnerquery)
-
-    //     const PreviousDayResult: any = await prisma.$queryRawUnsafe(PreviousDayWinnerquery)
-
-    //     //getting the winner of previous day that was already stored in DailyWinner
-    //     const winnerStatus: any = await prisma.$queryRawUnsafe(`
-    //         SELECT game_id
-    //    FROM dailyWinner
-    //    WHERE winning_date >= CURRENT_DATE - INTERVAL '1 day' -- Start of the previous day
-    //      AND winning_date < CURRENT_DATE  and position=1 and type='daily'
-    //       `)
-
-    //     console.log(
-    //       "winnerStatus",
-    //       winnerStatus,
-    //       "PreviousDayResult",
-    //       PreviousDayResult,
-    //       "CurrentDayResult",
-    //       CurrentDayResult,
-    //     )
-
-    //     if (winnerStatus.length > 0 && PreviousDayResult[0]?.game_id != winnerStatus[0]?.game_id) {
-    //       insertrewardledgertesting(
-    //         PreviousDayResult[0]?.game_id,
-    //         PreviousDayResult[0]?.last_order_id,
-    //         0,
-    //         -100,
-    //         "Count of highest order changed after a day",
-    //         "false",
-    //         new Date(),
-    //       )
-    //       insertrewardledgertesting(
-    //         PreviousDayResult[1]?.game_id,
-    //         PreviousDayResult[1]?.last_order_id,
-    //         0,
-    //         100,
-    //         "Count of highest order changed after a day",
-    //         "true",
-    //         new Date(),
-    //       )
-    //     }
-
-    //     insertrewardledgertesting(
-    //       CurrentDayResult[0]?.game_id,
-    //       CurrentDayResult[0]?.last_order_id,
-    //       0,
-    //       100,
-    //       "Points for highest order in a day",
-    //       "true",
-    //       new Date(),
-    //     )
-    //     // finding orders 
-    //     const result = await prisma.$queryRaw`
-    //   SELECT 
-    //     game_id, 
-    //     DATE (order_timestamp_created),
-    //     COUNT(DISTINCT CASE WHEN order_status = 'active' THEN order_id END)
-    //     - COUNT(DISTINCT CASE WHEN order_status = 'cancelled' THEN order_id END) AS order_count
-    //   FROM public.rewardledgertesting 
-    //   GROUP BY game_id , DATE(order_timestamp_created)
-    //   ORDER BY order_count DESC;
-    // `;
-
-    //     console.log("result", result)
+      )
   } catch (error: any) {
     console.log("error", error)
   }
@@ -959,7 +881,7 @@ export const fetchLeaderboardForWeek2 = async (date: string) => {
 
     console.log(`Fetching leaderboard for the week starting: ${currentWeekStartStr}`)
 
-    const leaderboard: any = await prisma.$queryRaw`
+    const leaderboard: Leaderboard[] = await prisma.$queryRaw`
       WITH valid_orders AS (
           SELECT order_id
           FROM public."orderData"
@@ -980,7 +902,7 @@ export const fetchLeaderboardForWeek2 = async (date: string) => {
       ORDER BY total_points DESC;
     `
 
-    const formattedLeaderboard = leaderboard.map((entry: any) => ({
+    const formattedLeaderboard = leaderboard.map((entry: Leaderboard) => ({
       ...entry,
       total_orders: Number(entry.total_orders),
       total_gmv: Number(entry.total_gmv),
@@ -1003,7 +925,7 @@ export const getLeaderboardByDate2 = async (date: string) => {
   try {
     const startDate = new Date(date).toISOString().split("T")[0]
 
-    const leaderboard: any = await prisma.$queryRaw`
+    const leaderboard: Leaderboard[] = await prisma.$queryRaw`
       WITH valid_orders AS (
           SELECT order_id
           FROM public."orderData"
@@ -1023,7 +945,7 @@ export const getLeaderboardByDate2 = async (date: string) => {
       ORDER BY total_points DESC;
     `
 
-    const formattedLeaderboard = leaderboard.map((entry: any) => ({
+    const formattedLeaderboard = leaderboard.map((entry: Leaderboard) => ({
       ...entry,
       total_orders: Number(entry.total_orders),
       total_gmv: Number(entry.total_gmv),
@@ -1044,12 +966,12 @@ export const getLeaderboardByDate2 = async (date: string) => {
 
 export const getMonthlyLeaderboardData2 = async () => {
   try {
-    const leaderboardData: any = await prisma.$queryRaw`
+    const leaderboardData: Leaderboard[] = await prisma.$queryRaw`
           SELECT * FROM monthly_top_leaderboard 
           ORDER BY total_points DESC;
         `
 
-    const updatedData = leaderboardData.map((row: any) => ({
+    const updatedData = leaderboardData.map((row: Leaderboard) => ({
       ...row,
       total_orders: row.total_orders.toString(),
       total_points: row.total_points.toString(),

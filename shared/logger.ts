@@ -1,6 +1,6 @@
-import winston, { Logger } from 'winston'
-import 'dotenv/config'
-import util from 'util'
+import winston, { Logger } from "winston"
+import "dotenv/config"
+import util from "util"
 const { combine, colorize } = winston.format
 
 const transform = () => {

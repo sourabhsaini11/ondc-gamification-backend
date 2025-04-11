@@ -4,7 +4,6 @@ import {
   getUserOrders,
   getUserOrdersForCSV,
   aggregateDailyGmvAndPoints,
-  search,
   rewardledgertesting,
   db,
   removetrigger,
@@ -42,7 +41,7 @@ const orderController = {
 
       const name = req.user?.email.split("@")[0]
       logger.info("name", name)
-      const result = await parseAndStoreCsv(filePath, req.user?.userId, name)
+      const result = await parseAndStoreCsv(filePath, req.user.userId, name)
 
       if (!result.success) {
         return res.status(400).json({ success: false, message: result.message })
@@ -131,32 +130,6 @@ const orderController = {
     }
   },
 
-  search: async (req: Request, res: Response): Promise<Response> => {
-    try {
-      logger.info("Request Query Params:", req.query)
-
-      // Extract & validate query params
-      const { format, game_id } = req.query
-
-      if (!format || !game_id) {
-        return res.status(400).json({ success: false, message: "Missing required parameters: format and game_id" })
-      }
-
-      if (typeof format !== "string" || typeof game_id !== "string") {
-        return res.status(400).json({ success: false, message: "Invalid parameter types" })
-      }
-
-      const Points = await search(game_id, format)
-
-      logger.info("Points:", JSON.stringify(Points))
-
-      return res.status(200).json({ success: true, data: Points })
-    } catch (error) {
-      logger.error("❌ Error retrieving orders:", error)
-      return res.status(500).json({ success: false, message: "Internal Server Error" })
-    }
-  },
-
   search2: async (req: Request, res: Response): Promise<Response> => {
     try {
       logger.info("Request Query Params:", req.query)
@@ -218,7 +191,7 @@ const orderController = {
     try {
       const { date } = _req.query
 
-      const orders = date ? await fetchLeaderboardForWeek(date as any) : await getWeeklyLeaderboardData()
+      const orders = date ? await fetchLeaderboardForWeek(date as string) : await getWeeklyLeaderboardData()
 
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
@@ -231,7 +204,7 @@ const orderController = {
     try {
       const { date } = _req.query
 
-      const orders = date ? await fetchLeaderboardForWeek2(date as any) : await getWeeklyLeaderboardData()
+      const orders = date ? await fetchLeaderboardForWeek2(date as string) : await getWeeklyLeaderboardData()
 
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
@@ -253,7 +226,7 @@ const orderController = {
   getDailyLeaderboardData: async (_req: Request, res: Response): Promise<Response> => {
     try {
       const { date } = _req.query
-      const orders = date ? await getLeaderboardByDate(date as any) : await getDailyLeaderboardData()
+      const orders = date ? await getLeaderboardByDate(date as string) : await getDailyLeaderboardData()
 
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
@@ -275,7 +248,7 @@ const orderController = {
   getDailyLeaderboardData2: async (_req: Request, res: Response): Promise<Response> => {
     try {
       const { date } = _req.query
-      const orders = date ? await getLeaderboardByDate2(date as any) : await getDailyLeaderboardData()
+      const orders = date ? await getLeaderboardByDate2(date as string) : await getDailyLeaderboardData()
 
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
