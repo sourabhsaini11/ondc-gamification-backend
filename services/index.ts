@@ -7,7 +7,51 @@ import { blake2b } from "blakejs"
 import { Decimal } from "@prisma/client/runtime/library"
 
 const prisma = new PrismaClient()
-export const findInvalidOrderStatus = (orders: any[]): { success: boolean; message?: string } => {
+
+type NormalizedRow = {
+  order_id: string
+  order_status: string
+  timestamp_created: string
+  total_price: number
+  phone_number: string
+  timestamp_updated?: string
+}
+type OrderRecord = {
+  uid: string
+  order_id: string
+  order_status: string
+  timestamp_created: Date
+  timestamp_updated: Date
+  buyer_app_id?: string
+  buyer_name: string
+  total_price: number
+  uploaded_by: number
+}
+type FullProcessedOrderRecord = Omit<
+  OrderRecord,
+  "timestamp_created" | "timestamp_updated" | "uid" | "order_status"
+> & {
+  uid: string
+  order_id: string
+  order_status: string
+  timestamp_created: string
+  timestamp_updated: string
+  game_id: string
+  points: number
+  entry_updated: boolean
+  streak_maintain: boolean
+  highest_gmv_for_day: boolean
+  highest_orders_for_day: boolean
+  same_day_order_count?: number
+  streak_count?: number
+  gmv: number
+  updated_by_lambda: string
+  last_streak_date: any
+}
+type OrderStatusValidationResult = { success: boolean; message?: string }
+type cancelledOrders = { order_id: string }
+
+export const findInvalidOrderStatus = (orders: OrderRecord[]): OrderStatusValidationResult => {
   const validStatuses = new Set(["active", "created", "partially_cancelled", "cancelled"])
 
   for (const order of orders) {
@@ -36,7 +80,7 @@ export const findDuplicateOrderIdAndStatys = (orders: { order_id: string; order_
   return { success: true, message: "No duplicates found" }
 }
 
-const validatePhoneNumber = (phone_number: any, index: number): { success: boolean; message?: string } => {
+const validatePhoneNumber = (phone_number: any, index: number): OrderStatusValidationResult => {
   const phoneRegex = /^\d{3}XXX\d{4}$/ // Expected format: 733XXX1892
 
   if (!/^\d{10}$/.test(phone_number.replace(/X/g, "0"))) {
@@ -54,7 +98,7 @@ const validatePhoneNumber = (phone_number: any, index: number): { success: boole
   return { success: true }
 }
 
-const validateTotalPrice = (total_price: any, index: number): { success: boolean; message?: string } => {
+const validateTotalPrice = (total_price: any, index: number): OrderStatusValidationResult => {
   logger.info("total_price", total_price)
   if (typeof total_price !== "number" || isNaN(total_price) || /[^0-9.]/.test(total_price.toString())) {
     return { success: false, message: `Invalid total price at row ${index}` }
@@ -66,7 +110,7 @@ const validateTotalPrice = (total_price: any, index: number): { success: boolean
 
   return { success: true }
 }
-const validateOrderTimestamp = (orders: any[]): { success: boolean; message?: string } => {
+const validateOrderTimestamp = (orders: OrderRecord[]): OrderStatusValidationResult => {
   const now = new Date()
   const oneDayLater = new Date()
   oneDayLater.setDate(now.getDate() + 1) // Allow timestamps up to 1 day in the future
@@ -94,19 +138,9 @@ const validateOrderTimestamp = (orders: any[]): { success: boolean; message?: st
 export const parseAndStoreCsv = async (
   filePath: string,
   userId: number,
-  buyer_name: string
+  buyer_name: string,
 ): Promise<{ success: boolean; message: string }> => {
-  const records: {
-    uid: any
-    order_id: any
-    order_status: any
-    timestamp_created: Date
-    timestamp_updated: Date
-    buyer_app_id?: any
-    buyer_name: string
-    total_price: number
-    uploaded_by: number
-  }[] = []
+  const records: OrderRecord[] = []
   const recordMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
   const partialMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
 
@@ -127,7 +161,7 @@ export const parseAndStoreCsv = async (
           const emptyFields: string[] = []
 
           // filter csv rows
-          const normalizedRow: any = Object.fromEntries(
+          const normalizedRow = Object.fromEntries(
             Object.entries(row).map(([key, value]) => {
               const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, "_")
 
@@ -145,8 +179,8 @@ export const parseAndStoreCsv = async (
 
               return [normalizedKey, value]
             }),
-          )
-
+          ) as NormalizedRow
+          console.log("normalizedrow", normalizedRow)
           if (check) {
             console.error("Values can't be empty")
             return reject({
@@ -155,7 +189,13 @@ export const parseAndStoreCsv = async (
             })
           }
 
-          const requiredFields = ["phone_number", "order_id", "order_status", "timestamp_created", "total_price"]
+          const requiredFields: (keyof NormalizedRow)[] = [
+            "phone_number",
+            "order_id",
+            "order_status",
+            "timestamp_created",
+            "total_price",
+          ]
 
           const rowKeys = Object.keys(normalizedRow) // Get all keys in row
           const missingFields = requiredFields.filter((field) => !normalizedRow[field])
@@ -170,15 +210,15 @@ export const parseAndStoreCsv = async (
 
           requiredFields.push("timestamp_updated")
 
-          const extraFields = rowKeys.filter((key) => !requiredFields.includes(key))
+          const extraFields = rowKeys.filter((key) => !requiredFields.includes(key as keyof NormalizedRow))
           if (extraFields.length > 0) {
             console.error(`❌ Unexpected Fields: ${extraFields.join(", ")}`)
             return reject({ success: false, message: `Unexpected fields found: ${extraFields.join(", ")}` })
           }
 
-          const orderId: any = normalizedRow["order_id"]
+          const orderId: string = normalizedRow["order_id"]
           const existingRecord = recordMap.get(orderId as string)
-          const orderStatus = String(normalizedRow["order_status"])?.toLowerCase()
+          const orderStatus: string = String(normalizedRow["order_status"])?.toLowerCase()
           const validOrderStatus = ["active", "partially_cancelled", "cancelled"]
 
           if (!validOrderStatus.includes(orderStatus))
@@ -201,16 +241,18 @@ export const parseAndStoreCsv = async (
               })
             }
 
-            const activeRecord: any = records?.find(
+            const activeRecord: OrderRecord | undefined = records?.find(
               (record) => record.order_id === orderId && record.order_status === "active",
             )
 
-            if (normalizedRow["total_price"] > activeRecord?.total_price) {
-              return reject({
-                success: false,
-                message: `
-                GMV greater than active order GMV at index:${rowCount} for Order ID ${orderId}`,
-              })
+            if (activeRecord) {
+              if (normalizedRow["total_price"] > activeRecord?.total_price) {
+                return reject({
+                  success: false,
+                  message: `
+                  GMV greater than active order GMV at index:${rowCount} for Order ID ${orderId}`,
+                })
+              }
             }
           }
 
@@ -232,7 +274,7 @@ export const parseAndStoreCsv = async (
 
           //async IIFE to fetch Userid
 
-          const timestampStr: any = normalizedRow["timestamp_created"] // Example: "2025-02-24 2:00:00"
+          const timestampStr: string = normalizedRow["timestamp_created"] // Example: "2025-02-24 2:00:00"
           const totalPrice: number = parseFloat(String(normalizedRow["total_price"]))
           const timestampCreated: Date = moment
             .tz(timestampStr, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata")
@@ -297,7 +339,7 @@ export const parseAndStoreCsv = async (
           }
 
           for (const row of records) {
-            if (await isDuplicateOrder(row.order_id, row.order_status, row.buyer_app_id)) {
+            if (await isDuplicateOrder(row.order_id, row.order_status, row.buyer_app_id || "")) {
               return reject({
                 success: false,
                 message: `Duplicate order ${row.order_id} (${row.order_status}) at row ${rowCount}`,
@@ -322,8 +364,8 @@ export const parseAndStoreCsv = async (
             }
           }
 
-          const newOrders: any = []
-          const cancellations: any = []
+          const newOrders: OrderRecord[] = []
+          const cancellations: OrderRecord[] = []
 
           records.forEach((row) => {
             const orderStatus = (row.order_status || "").toLowerCase()
@@ -340,7 +382,10 @@ export const parseAndStoreCsv = async (
           }
 
           // check for invalid order_status
-          const isInvalidOrderStatus: any = findInvalidOrderStatus([...newOrders, ...cancellations])
+          const isInvalidOrderStatus: OrderStatusValidationResult = findInvalidOrderStatus([
+            ...newOrders,
+            ...cancellations,
+          ])
           if (!isInvalidOrderStatus.success) {
             return reject({ success: false, message: isInvalidOrderStatus.message })
           }
@@ -357,13 +402,13 @@ export const parseAndStoreCsv = async (
           }
 
           if (newOrders.length > 0) {
-            const processedNewOrders = await processNewOrders(newOrders)
+            const processedNewOrders: FullProcessedOrderRecord[] = await processNewOrders(newOrders)
             await bulkInsertDataIntoDb(processedNewOrders)
           }
 
           if (cancellations.length > 0) {
             try {
-              const processedCancelOrders = await processCancellations(cancellations)
+              const processedCancelOrders: FullProcessedOrderRecord[] = await processCancellations(cancellations)
               logger.info("processedCancelOrders", processedCancelOrders)
               await bulkInsertDataIntoDb(processedCancelOrders)
             } catch (error: any) {
@@ -463,43 +508,6 @@ export const aggregateDailyGmvAndPoints = async () => {
   }
 }
 
-export const search = async (game_id: string, format: string) => {
-  try {
-    logger.info("Format:", format, "Game ID:", game_id)
-
-    const startDate = new Date()
-
-    if (format === "daily") {
-      startDate.setUTCHours(0, 0, 0, 0) // Start of the day UTC
-    } else if (format === "weekly") {
-      startDate.setUTCDate(startDate.getUTCDate() - 6)
-      startDate.setUTCHours(0, 0, 0, 0)
-    } else if (format === "monthly") {
-      startDate.setUTCDate(startDate.getUTCDate() - 30)
-      startDate.setUTCHours(0, 0, 0, 0)
-    } else {
-      throw new Error("Invalid format. Allowed values: 'daily', 'weekly', 'monthly'.")
-    }
-
-    // ✅ Ensure correct format for Prisma DateTime filter
-    logger.info("Start Date Filter (UTC):", startDate.toISOString())
-
-    const totalPoints = await prisma.$queryRaw`
-  SELECT COALESCE(SUM(points), 0) AS total_points, game_id
-  FROM rewardledger
-  WHERE game_id LIKE ${game_id} || '%'
-  AND created_at >= ${new Date(startDate).toISOString()}::timestamp AT TIME ZONE 'UTC'
-  GROUP BY game_id
-`
-
-    logger.info("Total Points Result:", totalPoints)
-    return totalPoints
-  } catch (error) {
-    console.error("Error in search function:", error)
-    throw error
-  }
-}
-
 export const search2 = async (game_id: string, format: string) => {
   try {
     console.log("Format:", format, "Game ID:", game_id)
@@ -563,7 +571,7 @@ export const getOrders = async (page: number = 1, pageSize: number = 100) => {
   }
 }
 
-const processNewOrders = async (orders: any) => {
+const processNewOrders = async (orders: OrderRecord[]) => {
   const processedData = []
 
   try {
@@ -572,7 +580,7 @@ const processNewOrders = async (orders: any) => {
     for (const row of orders) {
       try {
         const uid = String(row.uid || "").trim()
-        const timestampCreated: any = row.timestamp_created
+        const timestampCreated: Date = row.timestamp_created
         logger.info("tiemstampCreated", timestampCreated, new Date(timestampCreated), row.timestamp_created)
 
         // Get existing user data
@@ -618,7 +626,7 @@ const processNewOrders = async (orders: any) => {
 
         logger.info(lastStreakDate)
         // Calculate GMV
-        const gmv = parseFloat(row.total_price) || 0
+        const gmv = Number(row.total_price) || 0
 
         logger.info("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
 
@@ -668,7 +676,7 @@ const processNewOrders = async (orders: any) => {
   }
 }
 
-const processCancellations = async (cancellations: any) => {
+const processCancellations = async (cancellations: OrderRecord[]): Promise<FullProcessedOrderRecord[]> => {
   const processedData = []
   logger.info("Showing Cancellation orders!")
   logger.info(cancellations)
@@ -678,7 +686,7 @@ const processCancellations = async (cancellations: any) => {
       try {
         const orderId = row.order_id
         const orderStatus = (row.order_status || "").toLowerCase()
-        const timestampCreated: any = row.timestamp_created
+        const timestampCreated: Date = row.timestamp_created
 
         const originalOrder = await prisma.orderData.findFirst({
           where: {
@@ -823,175 +831,13 @@ const processCancellations = async (cancellations: any) => {
   }
 }
 
-export const updateHighestGmvAndOrdersForDay = async () => {
-  try {
-    // Step 1: Reset highest_gmv_for_day and highest_orders_for_day for all records
-    await prisma.orderData.updateMany({
-      data: {
-        highest_gmv_for_day: false,
-        highest_orders_for_day: false,
-      },
-    })
-
-    const highestGmvResults: any = await prisma.$queryRaw`
-      WITH aggregated_orders AS (
-        SELECT 
-          game_id, 
-          DATE(timestamp_created) AS order_date, 
-          SUM(points) AS total_points
-        FROM "orderData"
-        GROUP BY game_id, order_date
-      ),
-      ranked_orders AS (
-        SELECT 
-          game_id, 
-          order_date, 
-          total_points,
-          RANK() OVER (PARTITION BY order_date ORDER BY total_points DESC) AS rank
-        FROM aggregated_orders
-      )
-      SELECT game_id, order_date, total_points
-      FROM ranked_orders
-      WHERE rank = 1 AND total_points > 0  -- Exclude zero-point records
-      ORDER BY order_date DESC;
-    `
-
-    logger.info("highestGmvResults", highestGmvResults)
-
-    // Update highest_gmv_for_day for the top GMV game_id per day
-    for (const { game_id, order_date } of highestGmvResults as any[]) {
-      if (!order_date) {
-        console.error("order_date is undefined for game_id:", game_id)
-        continue // Skip invalid data
-      }
-
-      try {
-        // Convert order_date to a valid Date object
-        const istDate = new Date(order_date)
-
-        if (isNaN(istDate.getTime())) {
-          console.error("Invalid Date detected:", order_date)
-          continue // Skip this iteration if date is invalid
-        }
-
-        // IST Offset in milliseconds
-        const istOffset = 5.5 * 60 * 60 * 1000
-
-        // Convert to IST start of day
-        const startOfDayIST = new Date(istDate)
-        startOfDayIST.setUTCHours(0, 0, 0, 0)
-
-        // Convert to IST end of day
-        const endOfDayIST = new Date(istDate)
-        endOfDayIST.setUTCHours(23, 59, 59, 999)
-
-        // Convert back to UTC for Prisma
-        const startOfDayUTC = new Date(startOfDayIST.getTime() - istOffset)
-        const endOfDayUTC = new Date(endOfDayIST.getTime() - istOffset)
-
-        logger.info(`Updating highest_gmv_for_day for game_id: ${game_id} from ${startOfDayUTC} to ${endOfDayUTC}`)
-
-        await prisma.orderData.updateMany({
-          where: {
-            game_id,
-            timestamp_created: {
-              gte: startOfDayUTC, // Start of IST day in UTC
-              lt: endOfDayUTC, // End of IST day in UTC
-            },
-          },
-          data: {
-            highest_gmv_for_day: true,
-          },
-        })
-      } catch (error) {
-        console.error("Error processing order_date:", order_date, error)
-      }
-    }
-
-    // Step 4: Create a view for highest orders and GMV on the same day
-    const highestOrdersResults = await prisma.$queryRaw`
-      -- WITH aggregated_orders AS (
-      --   SELECT game_id, DATE(timestamp_created) as order_date, COUNT(order_id) AS total_orders 
-      --   FROM "orderData" 
-      --   GROUP BY game_id, order_date
-      -- )
-      -- SELECT game_id, order_date 
-      -- FROM aggregated_orders 
-      -- ORDER BY total_orders DESC
-      WITH filtered_orders AS (
-      SELECT order_id
-      FROM "orderData"
-      GROUP BY order_id
-      HAVING COUNT(*) = 1 OR COUNT(DISTINCT order_status) = 1
-      ),
-      aggregated_orders AS (
-          SELECT game_id, DATE(timestamp_created) AS order_date, COUNT(order_id) AS total_orders
-          FROM "orderData"
-          WHERE order_id IN (SELECT order_id FROM filtered_orders)
-          GROUP BY game_id, order_date
-      )
-      SELECT game_id, order_date, total_orders,order_id,timestamp_created
-      FROM aggregated_orders
-      ORDER BY total_orders DESC;
-    `
-    logger.info("highestOrdersResults", highestOrdersResults)
-
-    // Step 5: Update highest_orders_for_day for the top order count game_id per day
-    for (const {
-      game_id,
-      order_id,
-      order_date,
-      total_orders,
-      total_gmv,
-      max_orders,
-      max_gmv,
-    } of highestOrdersResults as any[]) {
-      // If this player has the highest GMV for the day as well, award extra points
-      logger.info("order_id", order_id)
-      const isHighestGMVUser = highestGmvResults.some(
-        (result: any) => result.game_id === game_id && result.timestamp_created === order_date,
-      )
-
-      // Deduct points from the old highest GMV and orders player if they were replaced
-      if (isHighestGMVUser) {
-        await prisma.leaderboard.update({
-          where: { game_id },
-          data: {
-            total_points: {
-              decrement: 100,
-            },
-          },
-        })
-      }
-
-      logger.info("total_orders", total_orders, total_gmv, max_orders, max_gmv)
-
-      // Step 6: Add the player to the leaderboard if both GMV and orders are highest
-      await prisma.orderData.updateMany({
-        where: {
-          game_id,
-          timestamp_created: {
-            gte: new Date(order_date),
-            lt: new Date(new Date(order_date).setDate(new Date(order_date).getDate() + 1)),
-          },
-        },
-        data: { highest_orders_for_day: true },
-      })
-    }
-
-    logger.info("Highest GMV and orders for the day updated successfully.")
-  } catch (error) {
-    console.error("Error updating highest GMV and orders for the day:", error)
-  }
-}
-
 const calculatePoints = async (
   game_id: string,
   gmv: number,
   uid: string,
   streakCount: number,
   condition: string,
-  timestamp: any,
+  timestamp: Date,
   originalGmv: number,
   orderId: string,
   // order_status?: string,
@@ -1034,7 +880,7 @@ const calculatePoints = async (
   }
 
   if (streakCount > 0) {
-    const streakBonuses: any = {
+    const streakBonuses: Record<number, number> = {
       3: 20,
       7: 30,
       10: 100,
@@ -1059,7 +905,7 @@ const calculatePoints = async (
   return points
 }
 
-const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string) => {
+const getTodayOrderCount2 = async (uid: string, timestamp: Date, order_id: string) => {
   try {
     logger.info("timestamp2", timestamp)
     const startOfDay = new Date(timestamp)
@@ -1069,7 +915,7 @@ const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string
     endOfDay.setHours(23, 59, 59, 999)
 
     // Get all order_id values that have at least one "cancelled" order
-    const cancelledOrders = await prisma.orderData.findMany({
+    const cancelledOrders: cancelledOrders[] = await prisma.orderData.findMany({
       where: {
         uid: uid,
         timestamp_created: {
@@ -1083,7 +929,7 @@ const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string
       },
     })
 
-    const cancelledOrderIds = cancelledOrders.map((order: any) => order.order_id)
+    const cancelledOrderIds = cancelledOrders.map((order: cancelledOrders) => order.order_id)
 
     // Add the provided order_id to the exclusion list
     if (order_id) {
@@ -1111,7 +957,7 @@ const getTodayOrderCount2 = async (uid: string, timestamp: any, order_id: string
   }
 }
 
-const bulkInsertDataIntoDb = async (data: any) => {
+const bulkInsertDataIntoDb = async (data: FullProcessedOrderRecord[]) => {
   /**
    * Bulk inserts data into the database using Prisma.
    */
@@ -1144,17 +990,17 @@ const bulkInsertDataIntoDb = async (data: any) => {
   // // Filter new orders where either order_id is new OR order_status is new for an existing order_id
 
   try {
-    const formattedData = filteredData.map((row: any) => ({
+    const formattedData: FullProcessedOrderRecord[] = filteredData.map((row: FullProcessedOrderRecord) => ({
       order_id: row.order_id,
       order_status: row.order_status,
       timestamp_created: row.timestamp_created,
       timestamp_updated: row.timestamp_updated,
       buyer_app_id: row.buyer_app_id,
       buyer_name: row.buyer_name,
-      total_price: parseFloat(row.total_price || 0),
+      total_price: Number(row.total_price || 0),
       uid: row.uid,
       game_id: row.game_id,
-      points: parseFloat(row.points || 0),
+      points: Number(row.points || 0),
       entry_updated: row.entry_updated,
       streak_maintain: row.streak_maintain,
       same_day_order_count: row.same_day_order_count || 1,
@@ -1173,7 +1019,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
   } catch (error: any) {
     console.error(`Error inserting bulk data`, error)
 
-    const message = error?.meta?.message || error?.message;
+    const message = error?.meta?.message || error?.message
 
     if (message) {
       // Optional: You could extract specifically the part that starts with "ERR_CODE:"
@@ -1192,7 +1038,7 @@ const bulkInsertDataIntoDb = async (data: any) => {
   }
 }
 
-export const parseTimestamp = (timestampStr: any) => {
+export const parseTimestamp = (timestampStr: string) => {
   try {
     const parsedDate = moment(timestampStr, [moment.ISO_8601, "DD/MM/YYYY HH:mm:ss", "DD-MM-YYYY HH:mm:ss"], true)
 
@@ -1351,8 +1197,8 @@ export const insertrewardledgertesting = async (
         points: points,
         reason: reason,
         order_status: order_status,
-        order_timestamp_created: order_timestamp_created
-      }
+        order_timestamp_created: order_timestamp_created,
+      },
     })
     return { result }
   } catch (error) {

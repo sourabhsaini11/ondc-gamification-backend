@@ -5,9 +5,7 @@ import {
   WeeklyWinnerUpdate,
   MonthlyWinnerUpdate,
   highestGmvandhighestOrder,
-  // , checkWeeklyWinnerCancellation, checkDailyWinnerCancellation
 } from "./points.servce"
-// import { aggregateDailyGmvAndPoints } from "./index"
 
 export const aggregatePointsCron = () => {
   new CronJob(
