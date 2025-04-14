@@ -434,81 +434,81 @@ export const parseAndStoreCsv = async (
   })
 }
 
-export const aggregateDailyGmvAndPoints = async () => {
-  try {
-    logger.info("🔄 Aggregating daily GMV and points...")
+// export const aggregateDailyGmvAndPoints = async () => {
+//   try {
+//     logger.info("🔄 Aggregating daily GMV and points...")
 
-    const uniqueDates: any = (await prisma.$queryRawUnsafe(
-      `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date 
-  FROM "orderData";`,
-    )) as { date: Date }[]
+//     const uniqueDates: any = (await prisma.$queryRawUnsafe(
+//       `SELECT DISTINCT DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') AS date 
+//   FROM "orderData";`,
+//     )) as { date: Date }[]
 
-    logger.info("uniqueDates", uniqueDates)
+//     logger.info("uniqueDates", uniqueDates)
 
-    for (const { date } of uniqueDates) {
-      // Find the game with the highest GMV for the date
-      const highestGmv: any = (await prisma.$queryRawUnsafe(
-        `SELECT id, game_id 
-         FROM "orderData" 
-         WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
-         GROUP BY id, game_id 
-         ORDER BY SUM(gmv) DESC 
-         LIMIT 1;`,
-      )) as { game_id: string }[]
+//     for (const { date } of uniqueDates) {
+//       // Find the game with the highest GMV for the date
+//       const highestGmv: any = (await prisma.$queryRawUnsafe(
+//         `SELECT id, game_id 
+//          FROM "orderData" 
+//          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
+//          GROUP BY id, game_id 
+//          ORDER BY SUM(gmv) DESC 
+//          LIMIT 1;`,
+//       )) as { game_id: string }[]
 
-      logger.info("highestGmv", highestGmv)
+//       logger.info("highestGmv", highestGmv)
 
-      // Find the game with the highest order count for the date
-      const highestOrders: any = (await prisma.$queryRawUnsafe(
-        `SELECT id, game_id 
-         FROM "orderData" 
-         WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
-         GROUP BY id, game_id 
-         ORDER BY COUNT(order_id) DESC 
-         LIMIT 1;`,
-      )) as { game_id: string }[]
+//       // Find the game with the highest order count for the date
+//       const highestOrders: any = (await prisma.$queryRawUnsafe(
+//         `SELECT id, game_id 
+//          FROM "orderData" 
+//          WHERE DATE(timestamp_created AT TIME ZONE 'Asia/Kolkata') = '${date.toISOString().split("T")[0]}' 
+//          GROUP BY id, game_id 
+//          ORDER BY COUNT(order_id) DESC 
+//          LIMIT 1;`,
+//       )) as { game_id: string }[]
 
-      logger.info("highestOrders", highestOrders)
+//       logger.info("highestOrders", highestOrders)
 
-      const topGmvGame: any = highestGmv[0]
-      const topOrdersGame: any = highestOrders[0]
+//       const topGmvGame: any = highestGmv[0]
+//       const topOrdersGame: any = highestOrders[0]
 
-      if (topGmvGame && topOrdersGame) {
-        if (topGmvGame.id === topOrdersGame.id) {
-          await prisma.$queryRawUnsafe(
-            `UPDATE "orderData" 
-             SET points = points + 200
-             WHERE id = $1;`,
-            topGmvGame.id,
-          )
-          logger.info(`✅ Updated id ${topGmvGame.id} with 200 points`)
-        } else {
-          await prisma.$queryRawUnsafe(
-            `UPDATE "orderData" 
-             SET points = points + 100
-             WHERE id = $1;`,
-            topGmvGame.id,
-          )
-          logger.info(`✅ Updated id ${topGmvGame.id} with 100 points`)
+//       if (topGmvGame && topOrdersGame) {
+//         if (topGmvGame.id === topOrdersGame.id) {
+//           await prisma.$queryRawUnsafe(
+//             `UPDATE "orderData" 
+//              SET points = points + 200
+//              WHERE id = $1;`,
+//             topGmvGame.id,
+//           )
+//           logger.info(`✅ Updated id ${topGmvGame.id} with 200 points`)
+//         } else {
+//           await prisma.$queryRawUnsafe(
+//             `UPDATE "orderData" 
+//              SET points = points + 100
+//              WHERE id = $1;`,
+//             topGmvGame.id,
+//           )
+//           logger.info(`✅ Updated id ${topGmvGame.id} with 100 points`)
 
-          await prisma.$queryRawUnsafe(
-            `UPDATE "orderData" 
-             SET points = points + 100
-             WHERE id = $1;`,
-            topOrdersGame.id,
-          )
-          logger.info(`✅ Updated id ${topOrdersGame.id} with 100 points`)
-        }
-      }
-    }
+//           await prisma.$queryRawUnsafe(
+//             `UPDATE "orderData" 
+//              SET points = points + 100
+//              WHERE id = $1;`,
+//             topOrdersGame.id,
+//           )
+//           logger.info(`✅ Updated id ${topOrdersGame.id} with 100 points`)
+//         }
+//       }
+//     }
 
-    logger.info("✅ Daily GMV and points aggregation completed.")
-  } catch (error) {
-    console.error("❌ Error aggregating daily GMV and points:", error)
-  }
-}
+//     logger.info("✅ Daily GMV and points aggregation completed.")
+//   } catch (error) {
+//     console.error("❌ Error aggregating daily GMV and points:", error)
+//   }
+// }
 
-export const search2 = async (game_id: string, format: string) => {
+export const search = async (game_id: string, format: string) => {
   try {
     console.log("Format:", format, "Game ID:", game_id)
 
@@ -542,32 +542,6 @@ export const search2 = async (game_id: string, format: string) => {
   } catch (error) {
     console.error("Error in search function:", error)
     throw error
-  }
-}
-
-export const getOrders = async (page: number = 1, pageSize: number = 100) => {
-  try {
-    const skip = (page - 1) * pageSize
-    const orders = await prisma.orderData.findMany({
-      skip,
-      take: pageSize,
-    })
-
-    const totalOrders = await prisma.orderData.count()
-    const totalPages = Math.ceil(totalOrders / pageSize)
-
-    logger.info("✅ Retrieved orders:", orders)
-    return {
-      orders,
-      currentPage: page,
-      totalPages,
-      totalOrders,
-    }
-  } catch (error) {
-    console.error("❌ Error retrieving orders:", error)
-    throw error
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -641,7 +615,7 @@ const processNewOrders = async (orders: OrderRecord[]) => {
           0,
           row.order_id,
         )
-        const orderCount = await getTodayOrderCount2(uid, timestampCreated, row.order_id)
+        const orderCount = await getTodayOrderCountNew(uid, timestampCreated, row.order_id)
 
         logger.info("sec---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
 
@@ -872,7 +846,7 @@ const calculatePoints = async (
 
   try {
     logger.info("==========>", timestamp)
-    const orderCount = await getTodayOrderCount2(uid, timestamp, orderId)
+    const orderCount = await getTodayOrderCountNew(uid, timestamp, orderId)
     logger.info("==========>", orderCount, timestamp)
     points += orderCount * 5
   } catch (error) {
@@ -905,7 +879,7 @@ const calculatePoints = async (
   return points
 }
 
-const getTodayOrderCount2 = async (uid: string, timestamp: Date, order_id: string) => {
+const getTodayOrderCountNew = async (uid: string, timestamp: Date, order_id: string) => {
   try {
     logger.info("timestamp2", timestamp)
     const startOfDay = new Date(timestamp)
@@ -1038,22 +1012,6 @@ const bulkInsertDataIntoDb = async (data: FullProcessedOrderRecord[]) => {
   }
 }
 
-export const parseTimestamp = (timestampStr: string) => {
-  try {
-    const parsedDate = moment(timestampStr, [moment.ISO_8601, "DD/MM/YYYY HH:mm:ss", "DD-MM-YYYY HH:mm:ss"], true)
-
-    if (!parsedDate.isValid()) {
-      console.error("parseTimestamp Error: Invalid timestamp format", timestampStr)
-      return null
-    }
-
-    return parsedDate
-  } catch (error) {
-    console.error("Invalid timestamp format:", error)
-    return null
-  }
-}
-
 export const getUserOrders = async (userId: number, page: number = 1, limit: number = 10) => {
   try {
     logger.info("userId", userId, "Page:", page, "Limit:", limit)
@@ -1067,7 +1025,6 @@ export const getUserOrders = async (userId: number, page: number = 1, limit: num
       take: limit,
     })
 
-    // Get total count for pagination metadata
     const totalOrders = await prisma.orderData.count({
       where: { uploaded_by: userId },
     })
@@ -1090,16 +1047,6 @@ export const getUserOrdersForCSV = async (userId: number) => {
   } catch (error) {
     console.error("Error fetching user orders:", error)
     throw new Error("Failed to fetch user orders")
-  }
-}
-
-export const rewardledger = async () => {
-  try {
-    const data = await prisma.rewardLedger.findMany()
-    return { data }
-  } catch (error) {
-    console.error("❌ Error setting up rewardledger trigger:", error)
-    throw new Error("Failed to fetch rewardledger")
   }
 }
 
@@ -1172,7 +1119,7 @@ const convertBigIntToString = (obj: any): any => {
   } else if (typeof obj === "bigint") {
     return obj.toString()
   } else if (obj instanceof Decimal) {
-    return obj.toNumber() // ✅ converts to plain number
+    return obj.toNumber()
   } else {
     return obj
   }

@@ -9,17 +9,14 @@ import { aggregatePointsCron } from "./services/cron.service"
 
 const createServer = (): express.Application => {
   const app: Application = express()
-  app.options("*", cors())
   const corsOptions = {
-    origin: "*", // Replace with your frontend domain
+    origin: "*",
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
     allowedHeaders: "*",
     optionsSuccessStatus: 204,
   }
 
-  // Use CORS middleware
   app.use(cors(corsOptions))
-
   app.use(express.json())
   app.use(express.urlencoded({ extended: true }))
   app.use("/api/v1/users", userRouter)
@@ -28,14 +25,6 @@ const createServer = (): express.Application => {
 
   // eslint-disable-next-line no-unused-vars
   app.get("/", async (_req: Request, res: Response): Promise<Response> => {
-    return res.status(200).send({
-      success: true,
-      message: "The server is running",
-    })
-  })
-
-  // eslint-disable-next-line no-unused-vars
-  app.get("/health", async (_req: Request, res: Response): Promise<Response> => {
     return res.status(200).send({
       success: true,
       message: "The server is running",

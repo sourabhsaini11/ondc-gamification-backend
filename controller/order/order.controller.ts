@@ -3,11 +3,10 @@ import {
   parseAndStoreCsv,
   getUserOrders,
   getUserOrdersForCSV,
-  aggregateDailyGmvAndPoints,
   rewardledgertesting,
   db,
   removetrigger,
-  search2,
+  search,
   downloadleaderboard,
 } from "../../services"
 import {
@@ -17,13 +16,10 @@ import {
   createOrRefreshWeeklyLeaderboardView,
   fetchLeaderboardData,
   fetchLeaderboardForWeek,
-  fetchLeaderboardForWeek2,
   getAllTimeLeaders,
   getDailyLeaderboardData,
   getLeaderboardByDate,
-  getLeaderboardByDate2,
   getMonthlyLeaderboardData,
-  getMonthlyLeaderboardData2,
   getWeeklyLeaderboardData,
   DayWinnerUpdate,
 } from "../../services/points.servce"
@@ -86,17 +82,6 @@ const orderController = {
   },
 
   // eslint-disable-next-line no-unused-vars
-  getOrders: async (_req: Request, res: Response): Promise<Response> => {
-    try {
-      const orders = await aggregateDailyGmvAndPoints()
-      logger.info("orders", JSON.stringify(orders))
-      return res.status(200).json({ success: true, data: orders })
-    } catch (error) {
-      logger.error("❌ Error retrieving orders:", error)
-      return res.status(500).json({ success: false, message: "Internal Server Error" })
-    }
-  },
-  // eslint-disable-next-line no-unused-vars
   db: async (_req: Request, res: Response): Promise<Response> => {
     try {
       const ledger = await db()
@@ -130,7 +115,7 @@ const orderController = {
     }
   },
 
-  search2: async (req: Request, res: Response): Promise<Response> => {
+  search: async (req: Request, res: Response): Promise<Response> => {
     try {
       logger.info("Request Query Params:", req.query)
 
@@ -145,7 +130,7 @@ const orderController = {
         return res.status(400).json({ success: false, message: "Invalid parameter types" })
       }
 
-      const Points = await search2(game_id, format)
+      const Points = await search(game_id, format)
 
       logger.info("Points:", JSON.stringify(Points))
 
@@ -199,19 +184,6 @@ const orderController = {
       return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
-
-  getWeeklyLeaderboardData2: async (_req: Request, res: Response): Promise<Response> => {
-    try {
-      const { date } = _req.query
-
-      const orders = date ? await fetchLeaderboardForWeek2(date as string) : await getWeeklyLeaderboardData()
-
-      return res.status(200).json({ success: true, data: orders })
-    } catch (error) {
-      logger.error("❌ Error retrieving orders:", error)
-      return res.status(500).json({ success: false, message: "Internal Server Error" })
-    }
-  },
   // eslint-disable-next-line no-unused-vars
   createOrRefreshMonthlyLeaderboardView: async (_req: Request, res: Response): Promise<Response> => {
     try {
@@ -238,28 +210,6 @@ const orderController = {
   getMonthlyLeaderboardData: async (_req: Request, res: Response): Promise<Response> => {
     try {
       const orders = await getMonthlyLeaderboardData()
-      return res.status(200).json({ success: true, data: orders })
-    } catch (error) {
-      logger.error("❌ Error retrieving orders:", error)
-      return res.status(500).json({ success: false, message: "Internal Server Error" })
-    }
-  },
-
-  getDailyLeaderboardData2: async (_req: Request, res: Response): Promise<Response> => {
-    try {
-      const { date } = _req.query
-      const orders = date ? await getLeaderboardByDate2(date as string) : await getDailyLeaderboardData()
-
-      return res.status(200).json({ success: true, data: orders })
-    } catch (error) {
-      logger.error("❌ Error retrieving orders:", error)
-      return res.status(500).json({ success: false, message: "Internal Server Error" })
-    }
-  },
-  // eslint-disable-next-line no-unused-vars
-  getMonthlyLeaderboardData2: async (_req: Request, res: Response): Promise<Response> => {
-    try {
-      const orders = await getMonthlyLeaderboardData2()
       return res.status(200).json({ success: true, data: orders })
     } catch (error) {
       logger.error("❌ Error retrieving orders:", error)
