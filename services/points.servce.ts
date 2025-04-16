@@ -206,7 +206,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS monthly_top_leaderboard`)
 
     const previewResults = await prisma.$executeRawUnsafe(`
-      CREATE OR REPLACE VIEW monthly_top_leaderboard AS
+      CREATE VIEW monthly_top_leaderboard AS
       WITH valid_orders AS (
           SELECT order_id ,buyer_app_id,buyer_name
           FROM public."orderData"
@@ -228,6 +228,10 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
       GROUP BY r.game_id , vo.buyer_app_id,vo.buyer_name
       ORDER BY total_points DESC;
     `)
+
+    console.log(
+      `Monthly leaderboard view updated for the week starting ${currentMonthStart.toISOString().split("T")[0]}., ${previewResults}`,
+    )
 
     return {
       statusCode: 200,
