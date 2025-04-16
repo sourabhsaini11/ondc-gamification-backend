@@ -1,4 +1,4 @@
-version: "3"
+# version: "3"
 services:
   backend:
     container_name: ${SERVICE_NAME:-gamafication-node-backend}
@@ -23,7 +23,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1234}
       POSTGRES_DB: ${POSTGRES_DB:-gamafication}
     ports:
-      - ${SERVICE_NAME_DB:-5432}:5432
+      - ${SERVICE_PORT_DB:-5432}:5432
     volumes:
       - /home/ubuntu/ALL_VOLUMES/gamafication-db-dev/postgres:/var/lib/postgresql/data
     networks:
