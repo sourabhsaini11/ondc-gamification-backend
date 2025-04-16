@@ -1,29 +1,36 @@
 version: "3"
 services:
   backend:
-    container_name: gamafication-node-backend
+    container_name: ${SERVICE_NAME:-gamafication-node-backend}
     build: .
     ports:
-      - 8000:8000
+      - ${SERVICE_PORT:-8000}:8000
     restart: always
     environment:
-      DATABASE_URL: postgres://postgres:1234@db:5432/gamafication
+      - DATABASE_URL=${DATABASE_URL}
     depends_on:
       - db
     command: >
       sh -c "while ! nc -z db 5432; do sleep 1; done;
              npx prisma migrate dev --name init;
              node dist/index.js"
+    networks:
+      - gamafication-network-dev
 
   db:
-    image: postgres:latest
-    container_name: gamafication-db
+    image: postgres:17
+    container_name: ${SERVICE_NAME_DB:-gamafication-db}
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1234
-      POSTGRES_DB: gamafication
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1234}
+      POSTGRES_DB: ${POSTGRES_DB:-gamafication}
     ports:
-      - "5434:5432"
+      - ${SERVICE_PORT_DB:-5432}:5432
     volumes:
-      - "/home/ubuntu/ALL_VOLUMES/gamafication-node-backend/postgres:/var/lib/postgresql/data"
+      - /home/ubuntu/ALL_VOLUMES/gamafication-db-dev/postgres:/var/lib/postgresql/data
+    networks:
+      - gamafication-network-dev
 
+networks:
+  gamafication-network-dev:
+    driver: bridge
