@@ -5,9 +5,19 @@ import moment from "moment-timezone"
 import { logger } from "../shared/logger"
 import { blake2b } from "blakejs"
 import { Decimal } from "@prisma/client/runtime/library"
-// import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3"
+import { Upload } from "@aws-sdk/lib-storage"
+
 
 const prisma = new PrismaClient()
+
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+})
 
 type NormalizedRow = {
   order_id: string
@@ -165,7 +175,6 @@ export const parseAndStoreCsv = async (
   filePath: string,
   userId: number,
   buyer_name: string,
-  // originalName: string
 ): Promise<{ success: boolean; message: string }> => {
   const records: OrderRecord[] = []
   const recordMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
@@ -440,6 +449,9 @@ export const parseAndStoreCsv = async (
             })
           }
 
+          const s3UploadResult = await uploadToS3(filePath, buyer_name)
+          logger.info("s3UploadResult", s3UploadResult)
+
           if (newOrders.length > 0) {
             const processedNewOrders: FullProcessedOrderRecord[] = await processNewOrders(newOrders)
             await bulkInsertDataIntoDb(processedNewOrders)
@@ -465,7 +477,7 @@ export const parseAndStoreCsv = async (
             message: "Error storing CSV data: " + error.message,
           })
         } finally {
-          // fs.unlinkSync(filePath)
+          fs.unlinkSync(filePath)
           await prisma.$disconnect()
         }
       })
@@ -474,6 +486,36 @@ export const parseAndStoreCsv = async (
         reject({ success: false, message: "Error reading CSV file: " + error })
       })
   })
+}
+
+const uploadToS3 = async (
+  filePath: string,
+  // originalName: string,
+  buyer_name: string,
+): Promise<{ success: boolean; url?: string; message?: string }> => {
+  const fileStream = fs.createReadStream(filePath)
+  const folder = `uploads/${buyer_name}`
+  const fileName = `${folder}/${Date.now()}`
+  
+  const uploadParams = {
+    Bucket: process.env.AWS_S3_BUCKET_NAME!,
+    Key: fileName,
+    Body: fileStream,
+    ContentType: "text/csv",
+  }
+
+  try {
+    const upload = new Upload({
+      client: s3Client,
+      params: uploadParams,
+    })
+
+    const result = await upload.done()
+    return { success: true, url: result.Location }
+  } catch (error: any) {
+    console.error("S3 Upload Error (v3):", error)
+    return { success: false, message: "Error uploading to S3: " + error.message }
+  }
 }
 
 export const search = async (game_id: string, format: string) => {
