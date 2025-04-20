@@ -4,7 +4,7 @@ import orderController from "../controller/order/order.controller"
 import { authenticate } from "../middleware/auth.middleware"
 
 const orderRouter = Router()
-const upload = multer({ dest: "uploads/" })
+const upload = multer({ dest: " uploads/" })
 orderRouter.post("/upload-csv", authenticate, upload.single("file"), orderController.uploadCsv)
 orderRouter.get("/search", orderController.search)
 orderRouter.get("/leaderboard", orderController.aggregatePointsSummary)
