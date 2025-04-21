@@ -8,7 +8,6 @@ import { Decimal } from "@prisma/client/runtime/library"
 import { S3Client } from "@aws-sdk/client-s3"
 import { Upload } from "@aws-sdk/lib-storage"
 
-
 const prisma = new PrismaClient()
 
 const s3Client = new S3Client({
@@ -36,7 +35,6 @@ type OrderRecord = {
   buyer_app_id?: string
   buyer_name: string
   total_price: number
-  uploaded_by: number
 }
 type FullProcessedOrderRecord = Omit<
   OrderRecord,
@@ -56,7 +54,7 @@ type FullProcessedOrderRecord = Omit<
   same_day_order_count?: number
   streak_count?: number
   gmv: number
-  updated_by_lambda: string
+  // updated_by_lambda: string
   last_streak_date: any
 }
 type OrderStatusValidationResult = { success: boolean; message?: string }
@@ -140,7 +138,8 @@ const validateTotalPrice = (total_price: any, index: number): OrderStatusValidat
 
   return { success: true }
 }
-const validateOrderTimestamp = (orders: OrderRecord[]): OrderStatusValidationResult => {
+
+export const validateOrderTimestamp = (orders: OrderRecord[]): OrderStatusValidationResult => {
   const now = new Date()
   const oneDayLater = new Date()
   oneDayLater.setDate(now.getDate() + 1) // Allow timestamps up to 1 day in the future
@@ -177,8 +176,7 @@ export const parseAndStoreCsv = async (
   buyer_name: string,
 ): Promise<{ success: boolean; message: string }> => {
   const records: OrderRecord[] = []
-  const recordMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
-  const partialMap = new Map<string, { orderStatus: string; buyerAppId: string }>()
+  const recordMap = new Map<string, { orderStatus: string }>()
   let rowCount = 0
 
   return new Promise((resolve, reject) => {
@@ -197,8 +195,14 @@ export const parseAndStoreCsv = async (
 
           let check = false
           const emptyFields: string[] = []
-
-          // filter csv rows
+          const requiredFields: (keyof NormalizedRow)[] = [
+            "phone_number",
+            "order_id",
+            "order_status",
+            "timestamp_created",
+            "total_price",
+          ]
+          // convert/normalize csv rows
           const normalizedRow = Object.fromEntries(
             Object.entries(row).map(([key, value]) => {
               const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, "_")
@@ -218,28 +222,18 @@ export const parseAndStoreCsv = async (
               return [normalizedKey, value]
             }),
           ) as NormalizedRow
-          console.log("normalizedrow", normalizedRow)
+
           if (check) {
-            console.error("Values can't be empty")
             return reject({
               success: false,
               message: `The following fields are empty or invalid: ${emptyFields.join(", ")} at index:${rowCount}`,
             })
           }
 
-          const requiredFields: (keyof NormalizedRow)[] = [
-            "phone_number",
-            "order_id",
-            "order_status",
-            "timestamp_created",
-            "total_price",
-          ]
-
-          const rowKeys = Object.keys(normalizedRow) // Get all keys in row
+          // check for missing fields
+          const rowKeys = Object.keys(normalizedRow)
           const missingFields = requiredFields.filter((field) => !normalizedRow[field])
-
           if (missingFields.length > 0) {
-            console.error(`❌ Missing Fields: ${missingFields.join(", ")}`)
             return reject({
               success: false,
               message: `mismatch for column name at column ${missingFields.join(", ")}`,
@@ -247,34 +241,31 @@ export const parseAndStoreCsv = async (
           }
 
           requiredFields.push("timestamp_updated")
-
+          // check for additional fields
           const extraFields = rowKeys.filter((key) => !requiredFields.includes(key as keyof NormalizedRow))
           if (extraFields.length > 0) {
-            console.error(`❌ Unexpected Fields: ${extraFields.join(", ")}`)
             return reject({
               success: false,
               message: `Unexpected fields found: ${extraFields.join(", ")}`,
             })
           }
 
+          //order status checks, valid status, duplicate status
           const orderId: string = normalizedRow["order_id"]
-          const existingRecord = recordMap.get(orderId as string)
           const orderStatus: string = String(normalizedRow["order_status"])?.toLowerCase()
           const validOrderStatus = ["active", "partially_cancelled", "cancelled"]
-
           if (!validOrderStatus.includes(orderStatus))
             return reject({
               success: false,
               message: `issue with order status at index:${rowCount}`,
             })
 
+          const existingRecord = recordMap.get(orderId as string)
           if (existingRecord) {
             if (
-              ((existingRecord.orderStatus.toLowerCase() == "created" &&
-                String(normalizedRow["order_status"]).toLowerCase() == "created") ||
-                (existingRecord.orderStatus.toLowerCase() == "active" &&
-                  String(normalizedRow["order_status"]).toLowerCase() == "active")) &&
-              existingRecord.buyerAppId === String(userId)
+              existingRecord.orderStatus.toLowerCase() == "active" &&
+              String(normalizedRow["order_status"]).toLowerCase() == "active"
+              // && existingRecord.buyerAppId === String(userId)
             ) {
               return reject({
                 success: false,
@@ -296,7 +287,6 @@ export const parseAndStoreCsv = async (
               }
             }
           }
-
 
           const timestampStr: string = normalizedRow["timestamp_created"] // Example: "2025-02-24 2:00:00"
           const totalPrice: number = parseFloat(String(normalizedRow["total_price"]))
@@ -341,19 +331,13 @@ export const parseAndStoreCsv = async (
             buyer_app_id: String(userId),
             buyer_name: String(buyer_name),
             total_price: totalPrice,
-            uploaded_by: userId,
           })
 
-          logger.info("records12", records)
+          logger.info("records", records)
 
-          // Store order_id with its order_status in Map
           recordMap.set(orderId as string, {
             orderStatus: normalizedRow["order_status"] as string,
-            buyerAppId: String(userId),
-          })
-          partialMap.set(orderId as string, {
-            orderStatus: normalizedRow["order_status"] as string,
-            buyerAppId: String(userId),
+            // buyerAppId: String(userId),
           })
         } catch (error: any) {
           logger.info("error", error)
@@ -366,7 +350,7 @@ export const parseAndStoreCsv = async (
           if (shouldAbort) return
 
           if (records.length === 0) {
-            logger.info("recordsss", records)
+            logger.info("parsed records", records)
             logger.info("⚠️ No valid records found in the CSV file")
             return resolve({
               success: false,
@@ -411,59 +395,26 @@ export const parseAndStoreCsv = async (
               newOrders.push(row)
             }
           })
-          // checks for invalid timestamp
-          const isInvalidTimestamp = validateOrderTimestamp([...newOrders, ...cancellations])
-          if (!isInvalidTimestamp.success) {
-            return reject({
-              success: false,
-              message: isInvalidTimestamp.message,
-            })
-          }
-
-          // check for invalid order_status
-          const isInvalidOrderStatus: OrderStatusValidationResult = findInvalidOrderStatus([
-            ...newOrders,
-            ...cancellations,
-          ])
-          if (!isInvalidOrderStatus.success) {
-            return reject({
-              success: false,
-              message: isInvalidOrderStatus.message,
-            })
-          }
-
-          // check for duplicate order id for same status
-          const isDuplicateNewOrder = findDuplicateOrderIdAndStatys(newOrders)
-          const isDuplicateCancellation = findDuplicateOrderIdAndStatys(cancellations)
-          if (!isDuplicateNewOrder.success) {
-            return reject({
-              success: false,
-              message: isDuplicateNewOrder.message,
-            })
-          }
-
-          if (!isDuplicateCancellation.success) {
-            return reject({
-              success: false,
-              message: isDuplicateCancellation.message,
-            })
-          }
 
           const s3UploadResult = await uploadToS3(filePath, buyer_name)
           logger.info("s3UploadResult", s3UploadResult)
 
           if (newOrders.length > 0) {
-            const processedNewOrders: FullProcessedOrderRecord[] = await processNewOrders(newOrders)
-            await bulkInsertDataIntoDb(processedNewOrders)
+            try {
+              const processedNewOrders: FullProcessedOrderRecord[] = await processNewOrders(newOrders)
+              await bulkInsertDataIntoDb(processedNewOrders)
+            } catch (error: any) {
+              logger.info("Error while storing active orders", error)
+              throw new Error(error.message)
+            }
           }
 
           if (cancellations.length > 0) {
             try {
               const processedCancelOrders: FullProcessedOrderRecord[] = await processCancellations(cancellations)
-              logger.info("processedCancelOrders", processedCancelOrders)
               await bulkInsertDataIntoDb(processedCancelOrders)
             } catch (error: any) {
-              logger.info("Got Error in Cancellation", error)
+              logger.info("Error while storing non-active orders", error)
               throw new Error(error.message)
             }
           }
@@ -496,7 +447,7 @@ const uploadToS3 = async (
   const fileStream = fs.createReadStream(filePath)
   const folder = `uploads/${buyer_name}`
   const fileName = `${folder}/${Date.now()}`
-  
+
   const uploadParams = {
     Bucket: process.env.AWS_S3_BUCKET_NAME!,
     Key: fileName,
@@ -565,7 +516,6 @@ const processNewOrders = async (orders: OrderRecord[]) => {
       try {
         const uid = String(row.uid || "").trim()
         const timestampCreated: Date = row.timestamp_created
-        logger.info("tiemstampCreated", timestampCreated, new Date(timestampCreated), row.timestamp_created)
 
         // Get existing user data
         const existingUser = await prisma.orderData.findFirst({
@@ -573,8 +523,6 @@ const processNewOrders = async (orders: OrderRecord[]) => {
           orderBy: { timestamp_created: "desc" },
           select: { game_id: true, last_streak_date: true, streak_count: true },
         })
-
-        logger.info("existingUser-----", existingUser)
 
         let game_id,
           lastStreakDate,
@@ -586,20 +534,14 @@ const processNewOrders = async (orders: OrderRecord[]) => {
           streakCount = existingUser.streak_count
         } else {
           if (!uidFirstOrderTimestamp[uid]) {
-            // uidFirstOrderTimestamp[uid] = timestampCreated.format("HH")
             uidFirstOrderTimestamp[uid] = String(new Date(timestampCreated).getUTCHours()).padStart(2, "0")
           }
 
-          // const fullUid = uid
-
-          lastStreakDate = timestampCreated
           //GAME ID FORMATION
-          // const timestamp = timestampCreated
-          const hours = String(new Date(timestampCreated).getUTCHours()) // Ensures valid ISO format
+          lastStreakDate = timestampCreated
+          const hours = String(new Date(timestampCreated).getUTCHours())
           const minutes = String(new Date(timestampCreated).getUTCMinutes())
-          console.log("uid", uid, "hours", hours, "minutes", minutes)
           const result = uid.slice(3, 11) + hours + minutes
-          console.log("result", result)
           const temp_id = `${result}`
           const hash = blake2b(temp_id, undefined, 64) // 64-byte (512-bit) hash
           const hashedId = Buffer.from(hash).toString("hex")
@@ -609,12 +551,7 @@ const processNewOrders = async (orders: OrderRecord[]) => {
         }
 
         logger.info(lastStreakDate)
-        // Calculate GMV
         const gmv = Number(row.total_price) || 0
-
-        logger.info("first---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
-
-        logger.info("newStreakCount", streakCount)
         const points = await calculatePoints(
           game_id,
           gmv,
@@ -626,8 +563,6 @@ const processNewOrders = async (orders: OrderRecord[]) => {
           row.order_id,
         )
         const orderCount = await getTodayOrderCountNew(uid, timestampCreated, row.order_id)
-
-        logger.info("sec---", timestampCreated, timestampCreated.toISOString(), row.timestamp_created)
 
         processedData.push({
           ...row,
@@ -642,7 +577,7 @@ const processNewOrders = async (orders: OrderRecord[]) => {
           streak_count: 0,
           last_streak_date: new Date().toISOString(),
           gmv: Math.floor(gmv),
-          updated_by_lambda: new Date().toISOString(),
+          // updated_by_lambda: new Date().toISOString(),
           timestamp_created: timestampCreated.toISOString(),
           timestamp_updated: new Date().toISOString(),
           uid: uid,
@@ -663,7 +598,6 @@ const processNewOrders = async (orders: OrderRecord[]) => {
 const processCancellations = async (cancellations: OrderRecord[]): Promise<FullProcessedOrderRecord[]> => {
   const processedData = []
   logger.info("Showing Cancellation orders!")
-  logger.info(cancellations)
 
   const partiallyCancelled = cancellations.filter((row) => row.order_status === "partially_cancelled")
   const cancelled = cancellations.filter((row) => row.order_status === "cancelled")
@@ -731,9 +665,6 @@ const processCancellations = async (cancellations: OrderRecord[]): Promise<FullP
         // Calculate new GMV
         const newGmv = safeFloat(row.total_price, 0)
 
-        // Calculate adjustment
-        let pointsAdjustment
-
         // Partially cancelled, recalculate points with streak as 0
         const newPoints = await calculatePoints(
           gameId,
@@ -747,11 +678,9 @@ const processCancellations = async (cancellations: OrderRecord[]): Promise<FullP
         )
 
         // eslint-disable-next-line prefer-const
-        pointsAdjustment = newPoints - originalPoints // 110 - 210 = -110
+        // Calculate adjustment
+        const pointsAdjustment = newPoints - originalPoints // 110 - 210 = -110
         const gmvAdjustment = originalGmv - newGmv
-        logger.info("gmvAdjustment", gmvAdjustment)
-
-        logger.info("first---", timestampCreated, timestampCreated.toISOString())
 
         processedData.push({
           ...row,
@@ -761,8 +690,8 @@ const processCancellations = async (cancellations: OrderRecord[]): Promise<FullP
           streak_maintain: true,
           highest_gmv_for_day: false,
           highest_orders_for_day: false,
-          gmv: newGmv,
-          updated_by_lambda: new Date().toISOString(),
+          gmv: gmvAdjustment,
+          // updated_by_lambda: new Date().toISOString(),
           timestamp_created: timestampCreated.toISOString(),
           timestamp_updated: new Date().toISOString(),
           uid: uid,
@@ -772,7 +701,6 @@ const processCancellations = async (cancellations: OrderRecord[]): Promise<FullP
       } catch (err) {
         console.error(`Error processing cancellation for order ${row.order_id}: ${err}`)
         throw Error(`Status not active at order: ${row.order_id}: ${err}`)
-        // continue
       }
     }
 
@@ -859,7 +787,7 @@ const processCancellations = async (cancellations: OrderRecord[]): Promise<FullP
           highest_gmv_for_day: false,
           highest_orders_for_day: false,
           gmv: newGmv,
-          updated_by_lambda: new Date().toISOString(),
+          // updated_by_lambda: new Date().toISOString(),
           timestamp_created: timestampCreated.toISOString(),
           timestamp_updated: new Date().toISOString(),
           uid: uid,
@@ -873,10 +801,9 @@ const processCancellations = async (cancellations: OrderRecord[]): Promise<FullP
       }
     }
 
-    console.log("ProcessedData here", processedData)
     return processedData
   } catch (err: any) {
-    console.error(`Error processing cancellations11111: ${err}`)
+    console.error(`Error processing cancellations: ${err}`)
     throw new Error(err.message)
   }
 }
@@ -890,7 +817,6 @@ const calculatePoints = async (
   timestamp: Date,
   originalGmv: number,
   orderId: string,
-  // order_status?: string,
 ) => {
   gmv = Math.max(0, parseFloat(gmv.toString()))
 
@@ -901,9 +827,7 @@ const calculatePoints = async (
 
   if (condition === "partial") {
     logger.info(game_id)
-    // ? Why are we sending points + 50 in the case of originalGMV excedding 1000 & current GMV deceding 1000
     if (originalGmv > 1000 && gmv < 1000) {
-      // await rewardledgerUpdate(game_id, orderId, 0, -50.0, "GMV < 1000 in partial cancellation", true, timestamp)
       return points + 50
     } else {
       points += 50
@@ -915,13 +839,10 @@ const calculatePoints = async (
 
   if (gmv > 1000) {
     points += 50
-    // await rewardledgerUpdate(game_id, orderId, 0, +50.0, "GMV Greater 1000", true, timestamp)
   }
 
   try {
-    logger.info("==========>", timestamp)
     const orderCount = await getTodayOrderCountNew(uid, timestamp, orderId)
-    logger.info("==========>", orderCount, timestamp)
     points += orderCount * 5
   } catch (error) {
     console.error(`Error calculating order count points for ${uid}:`, error)
@@ -936,20 +857,12 @@ const calculatePoints = async (
       21: 500,
       28: 700,
     }
-    const eligibleBonus = Math.max(
-      ...Object.keys(streakBonuses)
-        .map(Number)
-        .filter((key) => key <= streakCount),
-    )
-
-    logger.info("eligibleBonus", eligibleBonus, streakBonuses[streakCount])
 
     if (streakBonuses[streakCount]) {
       points += streakBonuses[streakCount]
     }
   }
 
-  logger.info("points", points)
   return points
 }
 
@@ -1010,7 +923,7 @@ const bulkInsertDataIntoDb = async (data: FullProcessedOrderRecord[]) => {
    * Bulk inserts data into the database using Prisma.
    */
   if (!data || data.length === 0) return
-  logger.info("row", JSON.stringify(data[0].uploaded_by))
+  logger.info("row", JSON.stringify(data[0].buyer_app_id))
 
   try {
     const formattedData: FullProcessedOrderRecord[] = data.map((row: FullProcessedOrderRecord) => ({
@@ -1029,10 +942,9 @@ const bulkInsertDataIntoDb = async (data: FullProcessedOrderRecord[]) => {
       same_day_order_count: row.same_day_order_count || 1,
       highest_gmv_for_day: row.highest_gmv_for_day,
       highest_orders_for_day: row.highest_orders_for_day,
-      updated_by_lambda: row.updated_by_lambda,
+      // updated_by_lambda: row.updated_by_lambda,
       gmv: row.gmv,
       streak_count: row.streak_count,
-      uploaded_by: row.uploaded_by || Number(1),
       last_streak_date: row.last_streak_date,
     }))
 
@@ -1070,14 +982,14 @@ export const getUserOrders = async (userId: number, page: number = 1, limit: num
     const skip = (page - 1) * limit
 
     const orders = await prisma.orderData.findMany({
-      where: { uploaded_by: userId },
+      where: { buyer_app_id: userId },
       orderBy: { timestamp_created: "desc" },
       skip,
       take: limit,
     })
 
     const totalOrders = await prisma.orderData.count({
-      where: { uploaded_by: userId },
+      where: { buyer_app_id: userId },
     })
 
     return { orders, totalOrders }
@@ -1090,7 +1002,7 @@ export const getUserOrders = async (userId: number, page: number = 1, limit: num
 export const getUserOrdersForCSV = async (userId: number) => {
   try {
     const orders = await prisma.orderData.findMany({
-      where: { uploaded_by: userId },
+      where: { buyer_app_id: userId },
       orderBy: { timestamp_created: "desc" },
     })
 
