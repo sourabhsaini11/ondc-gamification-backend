@@ -1,7 +1,7 @@
 import { Leaderboard, PrismaClient } from "@prisma/client"
 import { insertrewardledgertesting } from "./index"
 const prisma = new PrismaClient()
-
+import { logger } from "../shared/logger"
 type aggregatedData = {
   game_id: string
   total_points: string
@@ -126,7 +126,7 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
       const lastWeekStart = lastWeekCheck.length > 0 ? lastWeekCheck[0].leaderboard_week_start : null
 
       if (lastWeekStart && lastWeekStart.toISOString().split("T")[0] !== currentWeekStartStr) {
-        console.log(`Week changed from ${lastWeekStart} to ${currentWeekStartStr}. Resetting weekly leaderboard view.`)
+        logger.info(`Week changed from ${lastWeekStart} to ${currentWeekStartStr}. Resetting weekly leaderboard view.`)
       }
     }
 
@@ -156,7 +156,7 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
       ORDER BY total_points DESC;
     `)
 
-    console.log(`Weekly leaderboard view updated for the week starting ${currentWeekStartStr}., ${previewResults}`)
+    logger.info(`Weekly leaderboard view updated for the week starting ${currentWeekStartStr}., ${previewResults}`)
     return {
       statusCode: 200,
       body: `Weekly leaderboard view created/updated for the week starting ${currentWeekStartStr}, ${previewResults}.`,
@@ -229,7 +229,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
       ORDER BY total_points DESC;
     `)
 
-    console.log(
+    logger.info(
       `Monthly leaderboard view updated for the week starting ${currentMonthStart.toISOString().split("T")[0]}., ${previewResults}`,
     )
 
@@ -417,7 +417,7 @@ export const checkDailyWinnerCancellation = async () => {
     })
 
     if (!dailyWinner.length) {
-      console.log("No winner found for the previous day.")
+      logger.info("No winner found for the previous day.")
       return
     }
 
@@ -455,13 +455,13 @@ export const checkDailyWinnerCancellation = async () => {
             },
           })
         } else {
-          console.log("winner position has not been affected")
+          logger.info("winner position has not been affected")
         }
       } else {
-        console.log("One of the winners has missing points data.")
+        logger.info("One of the winners has missing points data.")
       }
     } else {
-      console.log(`Winner ${winnerUid} did not cancel orders today. Status remains for the previous day.`)
+      logger.info(`Winner ${winnerUid} did not cancel orders today. Status remains for the previous day.`)
     }
   } catch (error) {
     console.error("Error checking daily winner cancellations:", error)
@@ -504,7 +504,7 @@ export const checkWeeklyWinnerCancellation = async () => {
     })
 
     if (!weeklyWinner.length) {
-      console.log("No winner found for the previous week.")
+      logger.info("No winner found for the previous week.")
       return
     }
 
@@ -541,7 +541,7 @@ export const checkWeeklyWinnerCancellation = async () => {
       // Call handleOrderCancellationAndViolation to track violation and adjust points/status
       // await handleOrderCancellationAndViolation(winnerUid, "weekly", 1)
     } else {
-      console.log(`Winner ${winnerUid} did not cancel orders in Week 2. Status remains for Week 1.`)
+      logger.info(`Winner ${winnerUid} did not cancel orders in Week 2. Status remains for Week 1.`)
     }
   } catch (error) {
     console.error("Error checking weekly winner cancellations:", error)

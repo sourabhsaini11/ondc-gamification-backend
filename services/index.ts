@@ -5,8 +5,11 @@ import moment from "moment-timezone"
 import { logger } from "../shared/logger"
 import { blake2b } from "blakejs"
 import { Decimal } from "@prisma/client/runtime/library"
-import { S3Client } from "@aws-sdk/client-s3"
+import { S3Client, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3"
 import { Upload } from "@aws-sdk/lib-storage"
+import { Readable } from "stream"
+import { Parser } from "json2csv"
+import path from "path"
 
 const prisma = new PrismaClient()
 
@@ -54,7 +57,6 @@ type FullProcessedOrderRecord = Omit<
   same_day_order_count?: number
   streak_count?: number
   gmv: number
-  // updated_by_lambda: string
   last_streak_date: any
 }
 type OrderStatusValidationResult = { success: boolean; message?: string }
@@ -99,7 +101,7 @@ export const findDuplicateOrderIdAndStatys = (orders: { order_id: string; order_
   return { success: true, message: "No duplicates found" }
 }
 
-const validatePhoneNumber = (phone_number: any, index: number): OrderStatusValidationResult => {
+const validatePhoneNumber = (phone_number: string, index: number): OrderStatusValidationResult => {
   const phoneRegex = /^\d{3}XXX\d{4}$/ // Expected format: 733XXX1892
 
   if (!/^\d{10}$/.test(phone_number.replace(/X/g, "0"))) {
@@ -123,7 +125,7 @@ const validatePhoneNumber = (phone_number: any, index: number): OrderStatusValid
   return { success: true }
 }
 
-const validateTotalPrice = (total_price: any, index: number): OrderStatusValidationResult => {
+const validateTotalPrice = (total_price: number, index: number): OrderStatusValidationResult => {
   logger.info("total_price", total_price)
   if (typeof total_price !== "number" || isNaN(total_price) || /[^0-9.]/.test(total_price.toString())) {
     return { success: false, message: `Invalid total price at row ${index}` }
@@ -396,7 +398,7 @@ export const parseAndStoreCsv = async (
             }
           })
 
-          const s3UploadResult = await uploadToS3(filePath, buyer_name)
+          const s3UploadResult = await uploadToS3(filePath, buyer_name, String(userId))
           logger.info("s3UploadResult", s3UploadResult)
 
           if (newOrders.length > 0) {
@@ -441,11 +443,11 @@ export const parseAndStoreCsv = async (
 
 const uploadToS3 = async (
   filePath: string,
-  // originalName: string,
   buyer_name: string,
+  buyer_id: string ,
 ): Promise<{ success: boolean; url?: string; message?: string }> => {
   const fileStream = fs.createReadStream(filePath)
-  const folder = `uploads/${buyer_name}`
+  const folder = `uploads/${buyer_name}/${buyer_id}`
   const fileName = `${folder}/${Date.now()}`
 
   const uploadParams = {
@@ -471,7 +473,7 @@ const uploadToS3 = async (
 
 export const search = async (game_id: string, format: string) => {
   try {
-    console.log("Format:", format, "Game ID:", game_id)
+    logger.info(`Format: ${format}, "Game ID:", ${game_id}`)
 
     const startDate = new Date()
 
@@ -488,7 +490,7 @@ export const search = async (game_id: string, format: string) => {
     }
 
     // ✅ Ensure correct format for Prisma DateTime filter
-    console.log("Start Date Filter (UTC):", startDate.toISOString())
+    logger.info(`Start Date Filter (UTC): ${startDate.toISOString()}`)
 
     const totalPoints = await prisma.$queryRaw`
   SELECT COALESCE(SUM(points), 0) AS total_points, game_id
@@ -498,7 +500,7 @@ export const search = async (game_id: string, format: string) => {
   GROUP BY game_id
 `
 
-    console.log("Total Points Result:", totalPoints)
+    logger.info("Total Points Result:", totalPoints)
     return totalPoints
   } catch (error) {
     console.error("Error in search function:", error)
@@ -595,6 +597,106 @@ const processNewOrders = async (orders: OrderRecord[]) => {
   }
 }
 
+const processCancellationRow = async (row: any, type: "partial" | "full") => {
+  try {
+    const orderId = row.order_id
+    const orderStatus = (row.order_status || "").toLowerCase()
+    const timestampCreated: Date = row.timestamp_created
+
+    const possibleOrders = await prisma.orderData.findMany({
+      where: {
+        order_id: orderId,
+        order_status: {
+          in: ["partially_cancelled", "active"], // include both
+        },
+      },
+      orderBy: {
+        timestamp_created: "desc",
+      },
+    })
+    const originalOrder =
+      possibleOrders.find((o) => o.order_status === "partially_cancelled") ||
+      possibleOrders.find((o) => o.order_status === "active") ||
+      null
+    logger.info("originalOrder in cancellation", originalOrder)
+
+    const totalPoints =
+      originalOrder &&
+      (await prisma.orderData.groupBy({
+        by: ["uid"], // Group by user ID
+        _sum: {
+          points: true, // Sum the points for each user
+        },
+        where: {
+          uid: originalOrder.uid, // Filter for the specific user
+          order_status: "active", // Only consider orders with status 'created'
+        },
+      }))
+
+    logger.info(`Total points for user ${originalOrder?.uid}:`, totalPoints)
+
+    if (!originalOrder) {
+      logger.info(`Original order not found for cancellation: ${orderId}`)
+      throw new Error(`Original order not found for cancellation: ${orderId}`)
+    }
+
+    const {
+      points: originalPoints,
+      game_id: gameId,
+      uid,
+      last_streak_date,
+      gmv: originalGmv,
+      order_status,
+    } = originalOrder
+
+    logger.info("originalGmv", originalGmv), order_status
+
+    // Function to safely parse floats and handle negative values
+    const safeFloat = (value: number | number, defaultValue: number = 0): number => {
+      const num = parseFloat(value.toString())
+      return isNaN(num) ? defaultValue : Math.abs(num)
+    }
+
+    // Calculate new GMV
+    const newGmv = safeFloat(row.total_price, 0)
+    let pointsAdjustment, gmvAdjustment
+    if (type === "partial") {
+      const newPoints = await calculatePoints(gameId, newGmv, uid, 0, "partial", timestampCreated, originalGmv, orderId)
+
+      // eslint-disable-next-line prefer-const
+      // Calculate adjustment
+      pointsAdjustment = newPoints - originalPoints // 110 - 210 = -110
+      gmvAdjustment = originalGmv - newGmv
+    } else {
+      pointsAdjustment
+      gmvAdjustment = originalGmv // Full cancellation resets GMV
+
+      // eslint-disable-next-line prefer-const
+      pointsAdjustment = -originalPoints
+    }
+
+    return {
+      ...row,
+      game_id: gameId,
+      points: pointsAdjustment,
+      entry_updated: true,
+      streak_maintain: true,
+      highest_gmv_for_day: false,
+      highest_orders_for_day: false,
+      gmv: gmvAdjustment,
+      // updated_by_lambda: new Date().toISOString(),
+      timestamp_created: timestampCreated.toISOString(),
+      timestamp_updated: new Date().toISOString(),
+      uid: uid,
+      order_status: orderStatus,
+      last_streak_date,
+    }
+  } catch (err) {
+    console.error(`Error processing cancellation for order ${row.order_id}: ${err}`)
+    throw Error(`Status not active at order: ${row.order_id}: ${err}`)
+  }
+}
+
 const processCancellations = async (cancellations: OrderRecord[]): Promise<FullProcessedOrderRecord[]> => {
   const processedData = []
   logger.info("Showing Cancellation orders!")
@@ -604,200 +706,21 @@ const processCancellations = async (cancellations: OrderRecord[]): Promise<FullP
   try {
     for (const row of partiallyCancelled) {
       try {
-        const orderId = row.order_id
-        const orderStatus = (row.order_status || "").toLowerCase()
-        const timestampCreated: Date = row.timestamp_created
-
-        const possibleOrders = await prisma.orderData.findMany({
-          where: {
-            order_id: orderId,
-            order_status: {
-              in: ["partially_cancelled", "active"], // include both
-            },
-          },
-          orderBy: {
-            timestamp_created: "desc",
-          },
-        })
-        const originalOrder =
-          possibleOrders.find((o) => o.order_status === "partially_cancelled") ||
-          possibleOrders.find((o) => o.order_status === "active") ||
-          null
-        logger.info("originalOrder in cancellation", originalOrder)
-
-        const totalPoints =
-          originalOrder &&
-          (await prisma.orderData.groupBy({
-            by: ["uid"], // Group by user ID
-            _sum: {
-              points: true, // Sum the points for each user
-            },
-            where: {
-              uid: originalOrder.uid, // Filter for the specific user
-              order_status: "active", // Only consider orders with status 'created'
-            },
-          }))
-
-        logger.info(`Total points for user ${originalOrder?.uid}:`, totalPoints)
-
-        if (!originalOrder) {
-          logger.info(`Original order not found for cancellation: ${orderId}`)
-          throw new Error(`Original order not found for cancellation: ${orderId}`)
-        }
-
-        const {
-          points: originalPoints,
-          game_id: gameId,
-          uid,
-          last_streak_date,
-          gmv: originalGmv,
-          order_status,
-        } = originalOrder
-
-        logger.info("originalGmv", originalGmv), order_status
-
-        // Function to safely parse floats and handle negative values
-        const safeFloat = (value: number | number, defaultValue: number = 0): number => {
-          const num = parseFloat(value.toString())
-          return isNaN(num) ? defaultValue : Math.abs(num)
-        }
-
-        // Calculate new GMV
-        const newGmv = safeFloat(row.total_price, 0)
-
-        // Partially cancelled, recalculate points with streak as 0
-        const newPoints = await calculatePoints(
-          gameId,
-          newGmv,
-          uid,
-          0,
-          "partial",
-          timestampCreated,
-          originalGmv,
-          orderId,
-        )
-
-        // eslint-disable-next-line prefer-const
-        // Calculate adjustment
-        const pointsAdjustment = newPoints - originalPoints // 110 - 210 = -110
-        const gmvAdjustment = originalGmv - newGmv
-
-        processedData.push({
-          ...row,
-          game_id: gameId,
-          points: pointsAdjustment,
-          entry_updated: true,
-          streak_maintain: true,
-          highest_gmv_for_day: false,
-          highest_orders_for_day: false,
-          gmv: gmvAdjustment,
-          // updated_by_lambda: new Date().toISOString(),
-          timestamp_created: timestampCreated.toISOString(),
-          timestamp_updated: new Date().toISOString(),
-          uid: uid,
-          order_status: orderStatus,
-          last_streak_date,
-        })
+        const data = await processCancellationRow(row, "partial")
+        processedData.push(data)
       } catch (err) {
-        console.error(`Error processing cancellation for order ${row.order_id}: ${err}`)
-        throw Error(`Status not active at order: ${row.order_id}: ${err}`)
+        console.error(`Error processing partial cancellation for order ${row.order_id}:`, err)
+        throw err
       }
     }
 
     for (const row of cancelled) {
       try {
-        const orderId = row.order_id
-        const orderStatus = (row.order_status || "").toLowerCase()
-        const timestampCreated: Date = row.timestamp_created
-
-        const possibleOrders = await prisma.orderData.findMany({
-          where: {
-            order_id: orderId,
-            order_status: {
-              in: ["partially_cancelled", "active"], // include both
-            },
-          },
-          orderBy: {
-            timestamp_created: "desc",
-          },
-        })
-        const originalOrder =
-          possibleOrders.find((o) => o.order_status === "partially_cancelled") ||
-          possibleOrders.find((o) => o.order_status === "active") ||
-          null
-        logger.info("originalOrder in cancellation", originalOrder)
-
-        const totalPoints =
-          originalOrder &&
-          (await prisma.orderData.groupBy({
-            by: ["uid"], // Group by user ID
-            _sum: {
-              points: true, // Sum the points for each user
-            },
-            where: {
-              uid: originalOrder.uid, // Filter for the specific user
-              order_status: "active", // Only consider orders with status 'created'
-            },
-          }))
-
-        logger.info(`Total points for user ${originalOrder?.uid}:`, totalPoints)
-
-        if (!originalOrder) {
-          logger.info(`Original order not found for cancellation: ${orderId}`)
-          throw new Error(`Original order not found for cancellation: ${orderId}`)
-        }
-
-        const {
-          points: originalPoints,
-          game_id: gameId,
-          uid,
-          last_streak_date,
-          gmv: originalGmv,
-          order_status,
-        } = originalOrder
-
-        logger.info("originalGmv", originalGmv), order_status
-
-        // Function to safely parse floats and handle negative values
-        const safeFloat = (value: number | number, defaultValue: number = 0): number => {
-          const num = parseFloat(value.toString())
-          return isNaN(num) ? defaultValue : Math.abs(num)
-        }
-
-        // Calculate new GMV
-        let newGmv = safeFloat(row.total_price, 0)
-
-        // Calculate adjustment
-        let pointsAdjustment
-        newGmv = originalGmv // Full cancellation resets GMV
-
-        // eslint-disable-next-line prefer-const
-        pointsAdjustment = -originalPoints
-
-        // await deductPointsForHigherSameDayOrders(uid, orderId, timestampCreated, gameId, same_day_order_count)
-
-        logger.info("first---", timestampCreated, timestampCreated.toISOString())
-
-        processedData.push({
-          ...row,
-          game_id: gameId,
-          points: pointsAdjustment,
-          entry_updated: true,
-          streak_maintain: true,
-          highest_gmv_for_day: false,
-          highest_orders_for_day: false,
-          gmv: newGmv,
-          // updated_by_lambda: new Date().toISOString(),
-          timestamp_created: timestampCreated.toISOString(),
-          timestamp_updated: new Date().toISOString(),
-          uid: uid,
-          order_status: orderStatus,
-          last_streak_date,
-        })
+        const data = await processCancellationRow(row, "full")
+        processedData.push(data)
       } catch (err) {
-        console.error(`Error processing cancellation for order ${row.order_id}: ${err}`)
-        throw Error(`Status not active at order: ${row.order_id}: ${err}`)
-        // continue
+        console.error(`Error processing cancellation for order ${row.order_id}:`, err)
+        throw err
       }
     }
 
@@ -963,9 +886,7 @@ const bulkInsertDataIntoDb = async (data: FullProcessedOrderRecord[]) => {
       const errCodeIndex = message.indexOf("ERR_CODE:")
       if (errCodeIndex !== -1) {
         const extractedMessage = message.slice(errCodeIndex)
-        console.error("Extracted Error:", extractedMessage)
         let temp = `${extractedMessage}`
-        console.log("temp", temp)
         temp = temp.split(":")[2].split(",")[0]
         throw new Error(temp)
       } else {
@@ -1114,5 +1035,155 @@ export const insertrewardledgertesting = async (
   } catch (error) {
     console.error("error at inserting in rewardledgertesting", error)
     throw new Error("failed to Insert in rewardledger")
+  }
+}
+
+export async function listTodayFiles() {
+  const prefix = "uploads/"
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const startOfToday = today.getTime()
+  const endOfToday = startOfToday + 86400000 // 1 day in ms
+
+  const command = new ListObjectsV2Command({
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
+    Prefix: prefix,
+  })
+
+  const result = await s3Client.send(command)
+  const allTodayFiles =
+    result.Contents?.filter((obj) => {
+      const key = obj.Key || ""
+      const parts = key.split("/")
+      const timestampStr = parts[2] // uploads/{buyer_app_id}/{timestamp}/...
+      const timestamp = parseInt(timestampStr, 10)
+      return timestamp >= startOfToday && timestamp < endOfToday
+    }) || []
+
+  return allTodayFiles.map((file) => {
+    const parts = file.Key!.split("/")
+    return {
+      key: file.Key!,
+      buyer_app: parts[1],
+      buyer_app_id: parts[2], // uploads/{buyer_app_id}/...
+    }
+  })
+}
+
+
+async function streamToString(stream: Readable): Promise<string> {
+  const chunks: Uint8Array[] = []
+  for await (const chunk of stream) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk)
+  }
+
+  return Buffer.concat(chunks).toString("utf-8")
+}
+
+export async function getTodayFileContents() {
+  const keys = await listTodayFiles()
+  const contents: { key: string; content: string; buyer_app: string; buyer_app_id: string }[] = []
+
+  for (const { key, buyer_app, buyer_app_id } of keys) {
+    const command = new GetObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Key: key,
+    })
+
+    const response = await s3Client.send(command)
+    const body = response.Body as Readable
+
+    const fileContent = await streamToString(body)
+    contents.push({ key, content: fileContent, buyer_app, buyer_app_id })
+  }
+
+  return contents
+}
+
+
+export async function getTodayFileContentsWithValidation() {
+  const files = await getTodayFileContents()
+  const results: {
+    key: string
+    ordersInFile: Record<string, string>[]
+    validOrders: Record<string, string>[]
+    invalidOrders: Record<string, string>[]
+  }[] = []
+
+  for (const file of files) {
+    const orders = extractOrdersFromCSV(file.content)
+    const orderIds = orders.map((order) => order["Order ID"])
+    const validOrderSet = await getValidOrderIds(orderIds)
+
+    const valid = orders.filter((order) => validOrderSet.has(order["Order ID"]))
+    const invalid = orders.filter((order) => !validOrderSet.has(order["Order ID"]))
+
+    if (invalid.length > 0) {
+      const invalidFilePath = `/tmp/invalid_orders_${file.key.replace("/", "_")}.csv`
+  
+      const { success, filePath } = await saveInvalidOrdersToCSV(invalid, invalidFilePath)
+      if (success) {
+        // const result = await parseAndStoreCsv(filePath, file.buyer_app_id, file.buyer_app)
+        logger.info("parseAndStoreCsv result for invalids:")
+      } else {
+        logger.info("Could not save invalid orders as CSV:", filePath)
+      }
+    }
+
+    results.push({
+      key: file.key,
+      ordersInFile: orders,
+      validOrders: valid,
+      invalidOrders: invalid,
+    })
+  }
+
+  return results
+}
+
+async function getValidOrderIds(orderIds: string[]): Promise<Set<string>> {
+  const found = await prisma.orderData.findMany({
+    where: {
+      order_id: {
+        in: orderIds,
+      },
+    },
+    select: { order_id: true },
+  })
+  return new Set(found.map((o) => o.order_id))
+}
+
+function extractOrdersFromCSV(content: string): Record<string, string>[] {
+  const lines = content.split("\n").filter(Boolean)
+  const headers = lines[0].split(",").map((h) => h.trim())
+  const dataLines = lines.slice(1)
+
+  return dataLines
+    .map((line) => {
+      const values = line.split(",").map((val) => val.trim())
+      if (values.length !== headers.length) return null
+
+      const row: Record<string, string> = {}
+      headers.forEach((header, index) => {
+        row[header] = values[index]
+      })
+
+      return row
+    })
+    .filter((row): row is Record<string, string> => row !== null)
+}
+
+export const saveInvalidOrdersToCSV = async (invalidOrders: Record<string, string>[], filePath: string) => {
+  try {
+    const dir = path.dirname(filePath)
+    await fs.promises.mkdir(dir, { recursive: true }) 
+    const parser = new Parser()
+    const csv = parser.parse(invalidOrders)
+
+    await fs.promises.writeFile(filePath, csv)
+    return { success: true, filePath }
+  } catch (error) {
+    console.error("Failed to generate CSV:", error)
+    return { success: false, message: "CSV generation failed" }
   }
 }

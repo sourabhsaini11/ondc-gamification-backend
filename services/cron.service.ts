@@ -6,6 +6,8 @@ import {
   MonthlyWinnerUpdate,
   highestGmvandhighestOrder,
 } from "./points.servce"
+import { logger } from "../shared/logger"
+import { getTodayFileContentsWithValidation } from "./index"
 
 export const aggregatePointsCron = () => {
   new CronJob(
@@ -13,9 +15,8 @@ export const aggregatePointsCron = () => {
     "*/1 * * * *", // Runs every 10 minutes
     async () => {
       try {
-        console.log(`*=== Running aggregatePointsSummary Cron Job ===*`)
+        logger.info(`*=== Running aggregatePointsSummary Cron Job ===*`)
         await aggregatePointsSummary()
-        console.log(`*=== aggregatePointsSummary Job Completed Successfully ===*`)
       } catch (error) {
         console.error(`*=== Error in aggregatePointsSummary Cron Job: ${error} ===*`)
       }
@@ -28,9 +29,22 @@ export const aggregatePointsCron = () => {
       "0 0 * * *", // Runs every Monday at 8 AM
       async () => {
         try {
-          console.log(`*=== Running Highest GMV AND ORDER ===*`)
+          logger.info(`*=== Running Highest GMV AND ORDER ===*`)
           await highestGmvandhighestOrder()
-          console.log(`*=== Running Highest GMV AND ORDER ===*`)
+        } catch (error) {
+          console.error(`*=== Error in Weekly Winner Cancellation Cron Job: ${error} ===*`)
+        }
+      },
+      null,
+      true,
+      "Asia/Calcutta", // Adjust to your time zone
+    ),
+    new CronJob(
+      "0 0 * * *", // Runs every Monday at 8 AM
+      async () => {
+        try {
+          logger.info(`*=== Running Highest GMV AND ORDER ===*`)
+          await getTodayFileContentsWithValidation()
         } catch (error) {
           console.error(`*=== Error in Weekly Winner Cancellation Cron Job: ${error} ===*`)
         }

@@ -8,6 +8,7 @@ import {
   removetrigger,
   search,
   downloadleaderboard,
+  getTodayFileContentsWithValidation,
 } from "../../services"
 import {
   aggregatePointsSummary,
@@ -78,6 +79,17 @@ const orderController = {
     } catch (error) {
       logger.error("Error generating CSV:", error)
       res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+  },
+
+  // eslint-disable-next-line no-unused-vars
+  s3: async (_req: any, res: any): Promise<void> => {
+    try {
+      const result = await getTodayFileContentsWithValidation()
+      return res.status(200).json({ success: true, data: result })
+    } catch (err) {
+      logger.info(err)
+      return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
   },
 
