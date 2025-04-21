@@ -982,14 +982,14 @@ export const getUserOrders = async (userId: number, page: number = 1, limit: num
     const skip = (page - 1) * limit
 
     const orders = await prisma.orderData.findMany({
-      where: { buyer_app_id: userId },
+      where: { buyer_app_id: String(userId) },
       orderBy: { timestamp_created: "desc" },
       skip,
       take: limit,
     })
 
     const totalOrders = await prisma.orderData.count({
-      where: { buyer_app_id: userId },
+      where: { buyer_app_id: String(userId) },
     })
 
     return { orders, totalOrders }
@@ -1002,7 +1002,7 @@ export const getUserOrders = async (userId: number, page: number = 1, limit: num
 export const getUserOrdersForCSV = async (userId: number) => {
   try {
     const orders = await prisma.orderData.findMany({
-      where: { buyer_app_id: userId },
+      where: { buyer_app_id: String(userId) },
       orderBy: { timestamp_created: "desc" },
     })
 
