@@ -26,7 +26,6 @@ model OrderData {
   total_price             Float    @default(0.00)
   streak_count           Int      @default(0)
   last_streak_date       DateTime
-  // updated_by_lambda      DateTime
   game_id                String   @default("")
   points                 Float    @default(0.00)
   streak_maintain        Boolean  @default(false)
