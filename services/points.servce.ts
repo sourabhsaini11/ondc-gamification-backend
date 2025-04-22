@@ -55,7 +55,6 @@ export const createOrRefreshLeaderboardView = async () => {
     //   AND timestamp_created < (${todayDate}::DATE + INTERVAL '1 day');
     // `
 
-    // Create or replace the daily leaderboard view
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS daily_top_leaderboard;`)
 
     const previewResults = await prisma.$executeRawUnsafe(`
@@ -96,13 +95,11 @@ ORDER BY total_points DESC;
 
 export const createOrRefreshWeeklyLeaderboardView = async () => {
   try {
-    // Get today's date and determine the start of the current week (Monday)
     const todayDate = new Date()
     const currentWeekStart = new Date(todayDate)
     currentWeekStart.setDate(todayDate.getDate() - todayDate.getDay() + (todayDate.getDay() === 0 ? -6 : 1)) // Monday of this week
     const currentWeekStartStr = currentWeekStart.toISOString().split("T")[0] // YYYY-MM-DD
 
-    // Check if the leaderboard view exists
     const viewCheck: any = await prisma.$queryRaw`
         SELECT EXISTS (
           SELECT 1 FROM information_schema.views 
@@ -113,7 +110,6 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
     const viewExists = viewCheck[0]?.view_exists
 
     if (viewExists) {
-      // Get the last week's start date from the existing view
       const lastWeekCheck: any = await prisma.$queryRaw`
           SELECT DISTINCT leaderboard_week_start FROM weekly_top_leaderboard LIMIT 1;
         `
@@ -167,16 +163,10 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
 
 export const createOrRefreshMonthlyLeaderboardView = async () => {
   try {
-    // Get today's date
     const todayDate = new Date()
-
-    // Explicitly calculate the start of the current month (1st day of this month) in UTC
     const currentMonthStart = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), 1))
-
-    // Convert the calculated date to a string format YYYY-MM-DD
     const currentMonthStartStr = currentMonthStart.toISOString().split("T")[0] // YYYY-MM-DD
 
-    // Check if the leaderboard view exists
     const viewCheck: any = await prisma.$queryRaw`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.views 
@@ -185,9 +175,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
     `
 
     const viewExists = viewCheck[0]?.view_exists
-
     if (viewExists) {
-      // Check the last recorded month in the existing leaderboard view
       const lastMonthCheck: any = await prisma.$queryRaw`
             SELECT DISTINCT leaderboard_month_start FROM monthly_top_leaderboard LIMIT 1;
           `
@@ -197,9 +185,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
       }
     }
 
-    // Drop the view if it exists and recreate it with updated logic
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS monthly_top_leaderboard`)
-
     const previewResults = await prisma.$executeRawUnsafe(`
       CREATE VIEW monthly_top_leaderboard AS
       WITH valid_orders AS (
@@ -300,15 +286,15 @@ export const getAllTimeLeaders = async () => {
       SELECT order_id
       FROM public."orderData"
       GROUP BY order_id
-      HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
+      HAVING BOOL_AND(order_status <> 'cancelled')  
   )
   SELECT
       r.game_id,
       COALESCE(SUM(r.points), 0) AS total_points,
-      COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+      COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  
       COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv
   FROM public."rewardledger" r 
-  WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+  WHERE r.order_id IN (SELECT order_id FROM valid_orders) 
   GROUP BY r.game_id
   ORDER BY total_points DESC;
 `
@@ -383,7 +369,6 @@ const storePastWinners = async (leaderboardTable: string, type: string) => {
 export const highestGmvandhighestOrder = async () => {
   try {
     const todayDate = new Date()
-    // today highest order and highest gmv
     const highestOrders: any = await prisma.$queryRaw`
       WITH daily_orders AS (
     SELECT 
@@ -506,18 +491,18 @@ export const fetchLeaderboardForWeek = async (date: string) => {
           SELECT order_id
           FROM public."orderData"
           GROUP BY order_id
-          HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
+          HAVING BOOL_AND(order_status <> 'cancelled')  
       )
       SELECT
           r.game_id,
           COALESCE(SUM(r.points), 0) AS total_points,
-          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           ${currentWeekStartStr}::DATE AS leaderboard_week_start
       FROM public."rewardledgertesting" r 
       WHERE DATE(r.created_at) >= ${currentWeekStartStr}::DATE
         AND DATE(r.created_at) < ${endDateStr}::DATE
-        AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+        AND r.order_id IN (SELECT order_id FROM valid_orders)  
       GROUP BY r.game_id
       ORDER BY total_points DESC;
     `

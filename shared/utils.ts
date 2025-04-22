@@ -14,7 +14,7 @@ export const getUser = (): IUser => {
 }
 
 export const validatePhoneNumber = (phone_number: string, index: number): OrderStatusValidationResult => {
-  const phoneRegex = /^\d{3}XXX\d{4}$/ // Expected format: 733XXX1892
+  const phoneRegex = /^\d{3}XXX\d{4}$/
 
   if (!/^\d{10}$/.test(phone_number.replace(/X/g, "0"))) {
     return { success: false, message: `Invalid phone number at row: ${index}` }
@@ -56,15 +56,13 @@ export const validateTotalPrice = (total_price: number, index: number): OrderSta
 export const validateOrderTimestamp = (orders: OrderRecord[]): OrderStatusValidationResult => {
   const now = new Date()
   const oneDayLater = new Date()
-  oneDayLater.setDate(now.getDate() + 1) // Allow timestamps up to 1 day in the future
+  oneDayLater.setDate(now.getDate() + 1) 
 
   for (const order of orders) {
     const { order_id, timestamp_created: timestamp } = order
 
-    // Try to parse the timestamp
     const orderDate = new Date(timestamp)
 
-    // Check if the parsed date is invalid
     if (isNaN(orderDate.getTime())) {
       return {
         success: false,
@@ -72,7 +70,6 @@ export const validateOrderTimestamp = (orders: OrderRecord[]): OrderStatusValida
       }
     }
 
-    // Ensure it's not more than 1 day in the future
     if (orderDate > oneDayLater) {
       return {
         success: false,
@@ -106,8 +103,8 @@ export const uploadToS3 = async (
       params: uploadParams,
     })
 
-    const result = await upload.done()
-    return { success: true, url: result.Location }
+    const result:any = await upload.done()
+    return { success: true, url: result?.Location }
   } catch (error: any) {
     logger.error("S3 Upload Error (v3):", error)
     return { success: false, message: "Error uploading to S3: " + error.message }
@@ -165,7 +162,7 @@ export function getCsvLineCount(filePath: string): number {
     const output = execSync(`wc -l < "${resolvedPath}"`).toString().trim()
     const numLines = parseInt(output, 10)
 
-    return numLines // subtract header
+    return numLines 
   } catch (err: any) {
     console.error("Error running wc -l:", err.message)
     return -1
@@ -174,14 +171,11 @@ export function getCsvLineCount(filePath: string): number {
 
 export const validateCSVHeadersStrict = (filePath: string): { success: boolean; message?: string } => {
   try {
-    // Read entire file synchronously
     const content = fs.readFileSync(filePath, "utf8")
 
-    // Get first line
     const firstLine = content.split("\n")[0]
     console.log("First line:", firstLine)
 
-    // Rest of your validation logic...
     const normalizedHeaders = firstLine.split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"))
 
     const missingFields = requiredFields.filter((field) => !normalizedHeaders.includes(field))
@@ -212,10 +206,9 @@ export const checkForDuplicates = async (
   total_price: number,
 ): Promise<{ success: boolean; message?: string }> => {
   try {
-    // 1. Check in-memory map first (current batch)
     if (recordMap.has(orderId)) {
       const existing = recordMap.get(orderId)
-      if (existing?.orderStatus.toLowerCase() === orderStatus.toLowerCase()) {
+      if ((existing?.orderStatus.toLowerCase() === orderStatus.toLowerCase()) && existing?.orderStatus !== "partially_cancelled") {
         return {
           success: false,
           message: `Duplicate order ${orderId} with status ${orderStatus} in the current batch`,
@@ -223,7 +216,6 @@ export const checkForDuplicates = async (
       }
 
       if (orderStatus.toLowerCase() === "partially_cancelled" || orderStatus.toLowerCase() === "cancelled") {
-        // Check if we have an active order with the same orderId
         const activeOrder = recordMap.get(orderId)
         if (activeOrder && activeOrder.orderStatus === "active" && activeOrder.totalPrice < total_price) {
           return {
@@ -234,43 +226,42 @@ export const checkForDuplicates = async (
       }
     }
 
-    // 2. Check database for existing orders
+    if (orderStatus !== 'partially_cancelled') {
     const existingOrderInDb = await prisma.orderData.findFirst({
       where: {
         order_id: orderId,
         order_status: orderStatus,
         buyer_app_id: buyerAppId,
-      },
-      select: {
-        total_price: true,
-      },
+      }
     })
+
+    if (existingOrderInDb) {
+      return {
+        success: false,
+        message: `Order ${orderId} with status ${orderStatus} already exists in the database`,
+      }
+    }
+  }
 
     if (orderStatus.toLowerCase() === "partially_cancelled" || orderStatus.toLowerCase() === "cancelled") {
       const activeOrder = await prisma.orderData.findFirst({
         where: {
           order_id: orderId,
-          order_status: "active",
           buyer_app_id: buyerAppId,
+        },
+        orderBy: {
+          created_at: 'desc',
         },
         select: {
           total_price: true,
         },
       })
 
-      // Ensure active order exists before comparing
       if (activeOrder && activeOrder.total_price < total_price) {
         return {
           success: false,
           message: `Order ${orderId} with status ${orderStatus} can't have GMV greater than active order`,
         }
-      }
-    }
-
-    if (existingOrderInDb) {
-      return {
-        success: false,
-        message: `Order ${orderId} with status ${orderStatus} already exists in the database`,
       }
     }
 
@@ -281,4 +272,21 @@ export const checkForDuplicates = async (
       message: `Error checking for duplicates: ${error instanceof Error ? error.message : String(error)}`,
     }
   }
+}
+
+export const getErrorCode = (error: any): string => {
+  const message = error?.meta?.message || error?.message
+  if (message) {
+    const errCodeIndex = message.indexOf("ERR_CODE:")
+    if (errCodeIndex !== -1) {
+      const extractedMessage = message.slice(errCodeIndex)
+      let temp = `${extractedMessage}`
+      temp = temp.split(":")[2].split(",")[0]
+      return temp
+    } else {
+      logger.error("Error Message:", message)
+      return 'Error inserting bulk data'
+    }
+  } else
+  return 'Error inserting bulk data'
 }

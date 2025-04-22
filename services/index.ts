@@ -17,6 +17,7 @@ import {
   getCsvLineCount,
   validateCSVHeadersStrict,
   checkForDuplicates,
+  getErrorCode
 } from "../shared/utils"
 
 export const parseAndStoreCsv = async (
@@ -162,7 +163,6 @@ export const parseAndStoreCsv = async (
       })
       .on("end", async () => {
         try {
-          // if (shouldAbort) return
           await processingPromise
           if (records.length === 0) {
             logger.info("parsed records", records)
@@ -207,8 +207,8 @@ export const parseAndStoreCsv = async (
             try {
               await bulkInsertDataIntoDb(processedOrders)
             } catch (error: any) {
-              logger.info("Error while storing non-active orders", error)
-              throw new Error(error.message)
+              logger.info("Error while storing orders", error)
+              throw new Error(error)
             }
           }
 
@@ -238,7 +238,7 @@ export const search = async (game_id: string, format: string) => {
     const startDate = new Date()
 
     if (format === "daily") {
-      startDate.setUTCHours(0, 0, 0, 0) // Start of the day UTC
+      startDate.setUTCHours(0, 0, 0, 0)
     } else if (format === "weekly") {
       startDate.setUTCDate(startDate.getUTCDate() - 6)
       startDate.setUTCHours(0, 0, 0, 0)
@@ -277,7 +277,6 @@ const processNewOrders = async (orders: any) => {
         const uid = String(row.uid || "").trim()
         const timestampCreated: Date = row.timestamp_created
 
-        // Get existing user data
         const existingUser = await prisma.orderData.findFirst({
           where: { uid: uid },
           orderBy: { timestamp_created: "desc" },
@@ -367,10 +366,6 @@ const processCancellationRow = async (row: any) => {
     })
 
     const originalOrder = possibleOrders[0]
-    // const originalOrder =
-    //   possibleOrders.find((o) => o.order_status === "partially_cancelled") ||
-    //   possibleOrders.find((o) => o.order_status === "active") ||
-    //   null
     logger.info("originalOrder in cancellation", originalOrder)
 
     if (!originalOrder) {
@@ -518,7 +513,6 @@ const getTodayOrderCount = async (uid: string, timestamp: Date, order_id: string
     const endOfDay = new Date(timestamp)
     endOfDay.setHours(23, 59, 59, 999)
 
-    // Get all order_id values that have at least one "cancelled" order
     const cancelledOrders: cancelledOrders[] = await prisma.orderData.findMany({
       where: {
         uid: uid,
@@ -535,12 +529,10 @@ const getTodayOrderCount = async (uid: string, timestamp: Date, order_id: string
 
     const cancelledOrderIds = cancelledOrders.map((order: cancelledOrders) => order.order_id)
 
-    // Add the provided order_id to the exclusion list
     if (order_id) {
       cancelledOrderIds.push(order_id)
     }
 
-    // Count orders, excluding those with a "cancelled" order_id and the given order_id
     const totalOrdersToday = await prisma.orderData.count({
       where: {
         uid: uid,
@@ -562,9 +554,7 @@ const getTodayOrderCount = async (uid: string, timestamp: Date, order_id: string
 }
 
 const bulkInsertDataIntoDb = async (data: any) => {
-  if (!data || data.length === 0) return
-  logger.info("row", JSON.stringify(data[0].buyer_app_id))
-
+  logger.info("row", JSON.stringify(data[0]?.buyer_app_id))
   try {
     const insertedData = await prisma.orderData.createMany({
       data: data,
@@ -573,18 +563,8 @@ const bulkInsertDataIntoDb = async (data: any) => {
     logger.info(`Bulk data inserted successfully.`)
   } catch (error: any) {
     logger.error(`Error inserting bulk data`, error)
-    const message = error?.meta?.message || error?.message
-    if (message) {
-      const errCodeIndex = message.indexOf("ERR_CODE:")
-      if (errCodeIndex !== -1) {
-        const extractedMessage = message.slice(errCodeIndex)
-        let temp = `${extractedMessage}`
-        temp = temp.split(":")[2].split(",")[0]
-        throw new Error(temp)
-      } else {
-        logger.error("Error Message:", message)
-      }
-    }
+    const message = getErrorCode(error)
+    throw new Error(message)
   }
 }
 
@@ -735,7 +715,7 @@ export async function listTodayFiles() {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const startOfToday = today.getTime()
-  const endOfToday = startOfToday + 86400000 // 1 day in ms
+  const endOfToday = startOfToday + 86400000 
 
   const command = new ListObjectsV2Command({
     Bucket: process.env.AWS_S3_BUCKET_NAME,
@@ -747,7 +727,7 @@ export async function listTodayFiles() {
     result.Contents?.filter((obj) => {
       const key = obj.Key || ""
       const parts = key.split("/")
-      const timestampStr = parts[2] // uploads/{buyer_app_id}/{timestamp}/...
+      const timestampStr = parts[2] 
       const timestamp = parseInt(timestampStr, 10)
       return timestamp >= startOfToday && timestamp < endOfToday
     }) || []
@@ -757,7 +737,7 @@ export async function listTodayFiles() {
     return {
       key: file.Key!,
       buyer_app: parts[1],
-      buyer_app_id: parts[2], // uploads/{buyer_app_id}/...
+      buyer_app_id: parts[2], 
     }
   })
 }
