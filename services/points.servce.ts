@@ -1,13 +1,8 @@
-import { Leaderboard, PrismaClient } from "@prisma/client"
+import { Leaderboard } from "@prisma/client"
 import { insertrewardledgertesting } from "./index"
-const prisma = new PrismaClient()
+import { aggregatedData } from "interfaces/test"
 import { logger } from "../shared/logger"
-type aggregatedData = {
-  game_id: string
-  total_points: string
-  total_orders: string
-  total_gmv: string
-}
+import { prisma } from "../prisma/index"
 
 export const aggregatePointsSummary = async () => {
   try {
@@ -44,7 +39,7 @@ export const aggregatePointsSummary = async () => {
       body: `Updated ${aggregatedData.length} records in leaderboard`,
     }
   } catch (error) {
-    console.error("Error aggregating points summary:", error)
+    logger.error("Error aggregating points summary:", error)
     return { statusCode: 500, body: "Internal Server Error" }
   }
 }
@@ -91,7 +86,7 @@ ORDER BY total_points DESC;
       body: `Leaderboard view updated for ${todayDate}, ${previewResults}`,
     }
   } catch (error) {
-    console.error("Error creating/updating leaderboard view:", error)
+    logger.error("Error creating/updating leaderboard view:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -162,7 +157,7 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
       body: `Weekly leaderboard view created/updated for the week starting ${currentWeekStartStr}, ${previewResults}.`,
     }
   } catch (error) {
-    console.error("Error creating/updating weekly leaderboard view:", error)
+    logger.error("Error creating/updating weekly leaderboard view:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -238,7 +233,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
       body: `Monthly leaderboard view created/updated for the month starting ${currentMonthStartStr}.`,
     }
   } catch (error) {
-    console.error("Error creating/updating monthly leaderboard view:", error)
+    logger.error("Error creating/updating monthly leaderboard view:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -263,7 +258,7 @@ export const getDailyLeaderboardData = async () => {
       body: updatedData,
     }
   } catch (error) {
-    console.error("Error fetching daily leaderboard data:", error)
+    logger.error("Error fetching daily leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -290,7 +285,7 @@ export const getWeeklyLeaderboardData = async () => {
       body: updatedData,
     }
   } catch (error) {
-    console.error("Error fetching weekly leaderboard data:", error)
+    logger.error("Error fetching weekly leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -330,7 +325,7 @@ export const getAllTimeLeaders = async () => {
       body: updatedData,
     }
   } catch (error) {
-    console.error("Error fetching all time leaderboard data:", error)
+    logger.error("Error fetching all time leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -351,7 +346,7 @@ export const fetchLeaderboardData = async () => {
       body: leaderboardData,
     }
   } catch (error) {
-    console.error("Error fetching leaderboard data:", error)
+    logger.error("Error fetching leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -381,170 +376,7 @@ const storePastWinners = async (leaderboardTable: string, type: string) => {
       })
     }
   } catch (error) {
-    console.error(`Error storing ${type} winners:`, error)
-  }
-}
-
-export const checkDailyWinnerCancellation = async () => {
-  try {
-    const previousDay = new Date()
-    previousDay.setDate(previousDay.getDate() - 1)
-    previousDay.setHours(0, 0, 0, 0)
-
-    const previousDayEnd = new Date(previousDay)
-    previousDayEnd.setHours(23, 59, 59, 999)
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    const todayEnd = new Date(today)
-    todayEnd.setHours(23, 59, 59, 999)
-
-    const dailyWinner = await prisma.orderData.groupBy({
-      by: ["uid"],
-      _sum: { points: true },
-      where: {
-        timestamp_created: {
-          gte: previousDay,
-          lte: previousDayEnd,
-        },
-        highest_gmv_for_day: true,
-      },
-      orderBy: {
-        _sum: { points: "desc" },
-      },
-      take: 2,
-    })
-
-    if (!dailyWinner.length) {
-      logger.info("No winner found for the previous day.")
-      return
-    }
-
-    const winnerUid = dailyWinner[0].uid
-
-    const canceledOrders = await prisma.orderData.findMany({
-      where: {
-        uid: winnerUid,
-        timestamp_created: {
-          gte: today,
-          lte: todayEnd,
-        },
-        order_status: "cancelled",
-      },
-    })
-
-    if (canceledOrders.length > 0 && dailyWinner.length > 0) {
-      const firstWinner = dailyWinner[0]
-      const secondWinner = dailyWinner[1]
-
-      if (firstWinner?._sum?.points != null && secondWinner?._sum?.points != null) {
-        if (firstWinner._sum.points < secondWinner._sum.points) {
-          // await handleOrderCancellationAndViolation(winnerUid, "daily", 1)
-          await prisma.orderData.updateMany({
-            where: {
-              uid: winnerUid,
-              timestamp_created: {
-                gte: previousDay,
-                lte: previousDayEnd,
-              },
-            },
-            data: {
-              highest_gmv_for_day: false,
-              highest_orders_for_day: false,
-            },
-          })
-        } else {
-          logger.info("winner position has not been affected")
-        }
-      } else {
-        logger.info("One of the winners has missing points data.")
-      }
-    } else {
-      logger.info(`Winner ${winnerUid} did not cancel orders today. Status remains for the previous day.`)
-    }
-  } catch (error) {
-    console.error("Error checking daily winner cancellations:", error)
-  }
-}
-
-export const checkWeeklyWinnerCancellation = async () => {
-  try {
-    const startOfWeek1 = new Date()
-    startOfWeek1.setDate(startOfWeek1.getDate() - (startOfWeek1.getDay() + 7))
-    startOfWeek1.setHours(0, 0, 0, 0)
-
-    const endOfWeek1 = new Date(startOfWeek1)
-    endOfWeek1.setDate(startOfWeek1.getDate() + 6)
-    endOfWeek1.setHours(23, 59, 59, 999)
-
-    const startOfWeek2 = new Date()
-    startOfWeek2.setDate(startOfWeek2.getDate() - startOfWeek2.getDay())
-    startOfWeek2.setHours(0, 0, 0, 0)
-
-    const endOfWeek2 = new Date(startOfWeek2)
-    endOfWeek2.setDate(startOfWeek2.getDate() + 6)
-    endOfWeek2.setHours(23, 59, 59, 999)
-
-    // Find the winner for the previous week (week_1)
-    const weeklyWinner = await prisma.orderData.groupBy({
-      by: ["uid"],
-      _sum: { points: true },
-      where: {
-        timestamp_created: {
-          gte: startOfWeek1,
-          lte: endOfWeek1,
-        },
-        highest_gmv_for_day: true,
-      },
-      orderBy: {
-        _sum: { points: "desc" },
-      },
-      take: 1,
-    })
-
-    if (!weeklyWinner.length) {
-      logger.info("No winner found for the previous week.")
-      return
-    }
-
-    const winnerUid = weeklyWinner[0].uid
-
-    // Check if the winner canceled any orders in Week 2 (this week)
-    const canceledOrdersInWeek2 = await prisma.orderData.findMany({
-      where: {
-        uid: winnerUid,
-        timestamp_created: {
-          gte: startOfWeek2,
-          lte: endOfWeek2,
-        },
-        order_status: "cancelled",
-      },
-    })
-
-    if (canceledOrdersInWeek2.length > 0) {
-      // If they have canceled orders in Week 2, remove their winner status for Week 1
-      await prisma.orderData.updateMany({
-        where: {
-          uid: winnerUid,
-          timestamp_created: {
-            gte: startOfWeek1,
-            lte: endOfWeek1,
-          },
-        },
-        data: {
-          highest_gmv_for_day: false,
-          highest_orders_for_day: false,
-        },
-      })
-
-      // Call handleOrderCancellationAndViolation to track violation and adjust points/status
-      // await handleOrderCancellationAndViolation(winnerUid, "weekly", 1)
-    } else {
-      logger.info(`Winner ${winnerUid} did not cancel orders in Week 2. Status remains for Week 1.`)
-    }
-  } catch (error) {
-    console.error("Error checking weekly winner cancellations:", error)
+    logger.error(`Error storing ${type} winners:`, error)
   }
 }
 
@@ -701,7 +533,7 @@ export const fetchLeaderboardForWeek = async (date: string) => {
       body: formattedLeaderboard,
     }
   } catch (error) {
-    console.error("Error fetching weekly leaderboard:", error)
+    logger.error("Error fetching weekly leaderboard:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -744,7 +576,7 @@ export const getLeaderboardByDate = async (date: string) => {
       body: formattedLeaderboard,
     }
   } catch (error) {
-    console.error("Error fetching leaderboard:", error)
+    logger.error("Error fetching leaderboard:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -771,7 +603,7 @@ export const getMonthlyLeaderboardData = async () => {
       body: updatedData,
     }
   } catch (error) {
-    console.error("Error fetching monthly leaderboard data:", error)
+    logger.error("Error fetching monthly leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
