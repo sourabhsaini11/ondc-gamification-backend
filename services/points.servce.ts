@@ -1,34 +1,32 @@
 import { Leaderboard } from "@prisma/client"
-import { insertrewardledgertesting } from "./index"
-import { aggregatedData } from "interfaces/test"
 import { logger } from "../shared/logger"
 import { prisma } from "../prisma/index"
+import { insertHighestGmvAndOrder } from "../shared/utils"
 
 export const aggregatePointsSummary = async () => {
   try {
-    const aggregatedData: aggregatedData[] = await prisma.$queryRaw`
-            SELECT game_id, 
-                   SUM(points) AS total_points, 
-                   COUNT(order_id) AS total_orders, 
-                   SUM(gmv) AS total_gmv
-            FROM "orderData"
-            GROUP BY game_id;
-        `
+    // const aggregatedData: aggregatedData[] = await prisma.$queryRaw`
+    //         SELECT game_id,  
+    //                COUNT(order_id) AS total_orders, 
+    //                SUM(gmv) AS
+    //         FROM "orderData"
+    //         GROUP BY game_id;
+    //     `
 
-    // Upsert aggregated data into leaderboard
-    for (const { game_id, total_points, total_orders, total_gmv } of aggregatedData) {
-      const data = {
-        game_id,
-        total_points: Number(total_points),
-        total_orders: Number(total_orders),
-        total_gmv: Number(total_gmv),
-      }
-      await prisma.leaderboard.upsert({
-        where: { game_id },
-        update: data,
-        create: data,
-      })
-    }
+    // // Upsert aggregated data into leaderboard
+    // for (const { game_id, total_points, total_orders, total_gmv } of aggregatedData) {
+    //   const data = {
+    //     game_id,
+    //     total_points: Number(total_points),
+    //     total_orders: Number(total_orders),
+    //     total_gmv: Number(total_gmv),
+    //   }
+    //   await prisma.leaderboard.upsert({
+    //     where: { game_id },
+    //     update: data,
+    //     create: data,
+    //   })
+    // }
 
     await createOrRefreshLeaderboardView()
     await createOrRefreshWeeklyLeaderboardView()
@@ -36,7 +34,7 @@ export const aggregatePointsSummary = async () => {
 
     return {
       statusCode: 200,
-      body: `Updated ${aggregatedData.length} records in leaderboard`,
+      body: `Created Or Refreshed in leaderboard views`,
     }
   } catch (error) {
     logger.error("Error aggregating points summary:", error)
@@ -46,14 +44,7 @@ export const aggregatePointsSummary = async () => {
 
 export const createOrRefreshLeaderboardView = async () => {
   try {
-    const todayDate = new Date().toISOString().split("T")[0] // YYYY-MM-DD
-
-    //     const orderCheck = await prisma.$queryRaw`
-    //   SELECT COUNT(*) AS order_count
-    //   FROM "orderData"
-    //   WHERE timestamp_created >= ${todayDate}::DATE
-    //   AND timestamp_created < (${todayDate}::DATE + INTERVAL '1 day');
-    // `
+    const todayDate = new Date().toISOString().split("T")[0]
 
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS daily_top_leaderboard;`)
 
@@ -410,16 +401,6 @@ latest_order AS (
 
 SELECT * FROM latest_order
       `
-    highestOrders.length > 0 &&
-      insertrewardledgertesting(
-        highestOrders[0]?.game_id,
-        highestOrders[0]?.order_id,
-        0,
-        100,
-        `${highestOrders[0]?.total_orders} with highest Orders in ${todayDate}`,
-        "assigned",
-        highestOrders[0]?.order_timestamp_created,
-      )
 
     const highestGMV: any = await prisma.$queryRaw`
        WITH daily_orders AS  (  SELECT 
@@ -460,17 +441,10 @@ latest_order AS (
 
 SELECT * FROM latest_order
       `
-
+    console.log("highestGMV", highestGMV, "highestOrders", highestOrders)
     highestGMV.length > 0 &&
-      insertrewardledgertesting(
-        highestGMV[0]?.game_id,
-        highestGMV[0]?.order_id,
-        0,
-        100,
-        `${highestGMV[0]?.total_gmv} with highest gmv in ${todayDate}`,
-        "assigned",
-        highestGMV[0]?.order_timestamp_created,
-      )
+      highestOrders.length > 0 &&
+      insertHighestGmvAndOrder(highestOrders[0]?.game_id, highestGMV[0]?.game_id)
   } catch (error: any) {
     console.log("error", error)
   }

@@ -3,13 +3,13 @@ import {
   parseAndStoreCsv,
   getUserOrders,
   getUserOrdersForCSV,
-  rewardledgertesting,
+  // rewardledgertesting,
   db,
   removetrigger,
   search,
   downloadleaderboard,
   getTodayFileContentsWithValidation,
-} from "../../services"
+} from "../../services/index"
 import {
   aggregatePointsSummary,
   createOrRefreshLeaderboardView,
@@ -23,6 +23,7 @@ import {
   getMonthlyLeaderboardData,
   getWeeklyLeaderboardData,
   DayWinnerUpdate,
+  highestGmvandhighestOrder,
 } from "../../services/points.servce"
 import { Parser } from "json2csv"
 import { logger } from "../../shared/logger"
@@ -37,8 +38,8 @@ const orderController = {
       const filePath = req.file.path
 
       const name = req.user?.email.split("@")[0]
-      logger.info("name", name)
-      const result = await parseAndStoreCsv(filePath, req.user.userId, name)
+      logger.info("name", name, req.user)
+      const result = await parseAndStoreCsv(filePath, 1, "naval")
 
       if (!result.success) {
         return res.status(400).json({ success: false, message: result.message })
@@ -107,7 +108,7 @@ const orderController = {
   // eslint-disable-next-line no-unused-vars
   rewardledgertesting: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      const ledger = await rewardledgertesting()
+      const ledger = await highestGmvandhighestOrder()
       logger.info("ledger", ledger)
       return res.status(200).json({ success: true, data: ledger })
     } catch (err) {

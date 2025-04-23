@@ -87,3 +87,12 @@ created_at DateTime @default(now())
 
 @@map("rewardledgertesting")
 }
+
+model highestgmvandhighestorderofday{
+  id             Int      @id @default(autoincrement())
+highest_orders_for_day String  
+highest_gmv_for_day String
+created_at DateTime @default(now())
+
+@@map("highestgmvandhighestorder")
+}

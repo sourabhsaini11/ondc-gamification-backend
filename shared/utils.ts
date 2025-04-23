@@ -8,6 +8,7 @@ import { logger } from "../shared/logger"
 import { s3Client } from "../shared/s3client"
 import { requiredFields } from "../constants"
 import { prisma } from "../prisma/index"
+import { insertrewardledgertesting } from "../services"
 
 export const getUser = (): IUser => {
   return { name: "Test User", age: 24, gender: "male" }
@@ -56,7 +57,7 @@ export const validateTotalPrice = (total_price: number, index: number): OrderSta
 export const validateOrderTimestamp = (orders: OrderRecord[]): OrderStatusValidationResult => {
   const now = new Date()
   const oneDayLater = new Date()
-  oneDayLater.setDate(now.getDate() + 1) 
+  oneDayLater.setDate(now.getDate() + 1)
 
   for (const order of orders) {
     const { order_id, timestamp_created: timestamp } = order
@@ -103,11 +104,14 @@ export const uploadToS3 = async (
       params: uploadParams,
     })
 
-    const result:any = await upload.done()
+    const result: any = await upload.done()
     return { success: true, url: result?.Location }
   } catch (error: any) {
     logger.error("S3 Upload Error (v3):", error)
-    return { success: false, message: "Error uploading to S3: " + error.message }
+    return {
+      success: false,
+      message: "Error uploading to S3: " + error.message,
+    }
   }
 }
 
@@ -162,7 +166,7 @@ export function getCsvLineCount(filePath: string): number {
     const output = execSync(`wc -l < "${resolvedPath}"`).toString().trim()
     const numLines = parseInt(output, 10)
 
-    return numLines 
+    return numLines
   } catch (err: any) {
     console.error("Error running wc -l:", err.message)
     return -1
@@ -182,11 +186,17 @@ export const validateCSVHeadersStrict = (filePath: string): { success: boolean; 
     const extraFields = normalizedHeaders.filter((field) => !requiredFields.includes(field))
 
     if (missingFields.length > 0) {
-      return { success: false, message: `Missing required headers: ${missingFields.join(", ")}` }
+      return {
+        success: false,
+        message: `Missing required headers: ${missingFields.join(", ")}`,
+      }
     }
 
     if (extraFields.length > 0) {
-      return { success: false, message: `Unexpected headers found: ${extraFields.join(", ")}` }
+      return {
+        success: false,
+        message: `Unexpected headers found: ${extraFields.join(", ")}`,
+      }
     }
 
     return { success: true }
@@ -208,7 +218,10 @@ export const checkForDuplicates = async (
   try {
     if (recordMap.has(orderId)) {
       const existing = recordMap.get(orderId)
-      if ((existing?.orderStatus.toLowerCase() === orderStatus.toLowerCase()) && existing?.orderStatus !== "partially_cancelled") {
+      if (
+        existing?.orderStatus.toLowerCase() === orderStatus.toLowerCase() &&
+        existing?.orderStatus !== "partially_cancelled"
+      ) {
         return {
           success: false,
           message: `Duplicate order ${orderId} with status ${orderStatus} in the current batch`,
@@ -226,22 +239,22 @@ export const checkForDuplicates = async (
       }
     }
 
-    if (orderStatus !== 'partially_cancelled') {
-    const existingOrderInDb = await prisma.orderData.findFirst({
-      where: {
-        order_id: orderId,
-        order_status: orderStatus,
-        buyer_app_id: buyerAppId,
-      }
-    })
+    if (orderStatus !== "partially_cancelled") {
+      const existingOrderInDb = await prisma.orderData.findFirst({
+        where: {
+          order_id: orderId,
+          order_status: orderStatus,
+          buyer_app_id: buyerAppId,
+        },
+      })
 
-    if (existingOrderInDb) {
-      return {
-        success: false,
-        message: `Order ${orderId} with status ${orderStatus} already exists in the database`,
+      if (existingOrderInDb) {
+        return {
+          success: false,
+          message: `Order ${orderId} with status ${orderStatus} already exists in the database`,
+        }
       }
     }
-  }
 
     if (orderStatus.toLowerCase() === "partially_cancelled" || orderStatus.toLowerCase() === "cancelled") {
       const activeOrder = await prisma.orderData.findFirst({
@@ -250,7 +263,7 @@ export const checkForDuplicates = async (
           buyer_app_id: buyerAppId,
         },
         orderBy: {
-          created_at: 'desc',
+          timestamp_created: "desc",
         },
         select: {
           total_price: true,
@@ -285,8 +298,73 @@ export const getErrorCode = (error: any): string => {
       return temp
     } else {
       logger.error("Error Message:", message)
-      return 'Error inserting bulk data'
+      return "Error inserting bulk data"
     }
-  } else
-  return 'Error inserting bulk data'
+  } else return "Error inserting bulk data"
+}
+
+export const insertHighestGmvAndOrder = async (highestOrderGameId: string, highestGmvGameId: string) => {
+  try {
+    console.log("highestOrderGameId", highestOrderGameId, "highestGmvGameId", highestGmvGameId)
+
+    // Create record of daily winners
+    const result = await prisma.highestgmvandhighestorderofday.create({
+      data: {
+        highest_orders_for_day: highestOrderGameId,
+        highest_gmv_for_day: highestGmvGameId,
+      },
+    })
+
+    // Helper function to find latest active order for a game
+    const findLatestOrder = async (gameId: string) => {
+      return await prisma.rewardLedgerTesting.findFirst({
+        where: {
+          game_id: gameId,
+          order_status: "active",
+        },
+        orderBy: {
+          order_timestamp_created: "desc",
+        },
+        select: {
+          order_id: true,
+          order_timestamp_created: true,
+        },
+      })
+    }
+
+    // Process highest order game
+    const highestOrderOrder = await findLatestOrder(highestOrderGameId)
+    if (highestOrderOrder) {
+      await insertrewardledgertesting(
+        highestOrderGameId,
+        highestOrderOrder.order_id,
+        0,
+        100,
+        "highest orders in a day", // Fixed description to be accurate
+        "assigned",
+        highestOrderOrder.order_timestamp_created,
+      )
+    }
+
+    // Process highest GMV game (only if different from highest order game)
+    if (highestGmvGameId !== highestOrderGameId) {
+      const highestGmvOrder = await findLatestOrder(highestGmvGameId)
+      if (highestGmvOrder) {
+        await insertrewardledgertesting(
+          highestGmvGameId,
+          highestGmvOrder.order_id,
+          0,
+          100,
+          "highest GMV in a day", // Fixed description
+          "assigned",
+          highestGmvOrder.order_timestamp_created,
+        )
+      }
+    }
+
+    logger.info(`Successfully inserted daily winners: ${JSON.stringify(result)}`)
+  } catch (error) {
+    logger.error("Error in insertHighestGmvAndOrder:", error)
+    throw error // Re-throw to allow calling code to handle
+  }
 }
