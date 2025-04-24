@@ -178,8 +178,6 @@ export const validateCSVHeadersStrict = (filePath: string): { success: boolean; 
     const content = fs.readFileSync(filePath, "utf8")
 
     const firstLine = content.split("\n")[0]
-    console.log("First line:", firstLine)
-
     const normalizedHeaders = firstLine.split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"))
 
     const missingFields = requiredFields.filter((field) => !normalizedHeaders.includes(field))
@@ -208,18 +206,18 @@ export const validateCSVHeadersStrict = (filePath: string): { success: boolean; 
   }
 }
 
-export const checkForDuplicates = async (
+export const checkForDuplicates =  (
   orderId: string,
   orderStatus: string,
   buyerAppId: string,
-  recordMap: Map<string, { orderStatus: string; totalPrice: number }>,
+  recordMap: Map<string, { orderStatus: string; buyerAppId: string; totalPrice: number }>,
   total_price: number,
-): Promise<{ success: boolean; message?: string }> => {
+): OrderStatusValidationResult => {
   try {
     if (recordMap.has(orderId)) {
       const existing = recordMap.get(orderId)
       if (
-        existing?.orderStatus.toLowerCase() === orderStatus.toLowerCase() &&
+        existing?.orderStatus.toLowerCase() === orderStatus.toLowerCase() && existing.buyerAppId === buyerAppId &&
         existing?.orderStatus !== "partially_cancelled"
       ) {
         return {
@@ -235,45 +233,6 @@ export const checkForDuplicates = async (
             success: false,
             message: `Order ${orderId} with status ${orderStatus} can't have GMV greater than active order`,
           }
-        }
-      }
-    }
-
-    if (orderStatus !== "partially_cancelled") {
-      const existingOrderInDb = await prisma.orderData.findFirst({
-        where: {
-          order_id: orderId,
-          order_status: orderStatus,
-          buyer_app_id: buyerAppId,
-        },
-      })
-
-      if (existingOrderInDb) {
-        return {
-          success: false,
-          message: `Order ${orderId} with status ${orderStatus} already exists in the database`,
-        }
-      }
-    }
-
-    if (orderStatus.toLowerCase() === "partially_cancelled" || orderStatus.toLowerCase() === "cancelled") {
-      const activeOrder = await prisma.orderData.findFirst({
-        where: {
-          order_id: orderId,
-          buyer_app_id: buyerAppId,
-        },
-        orderBy: {
-          timestamp_created: "desc",
-        },
-        select: {
-          total_price: true,
-        },
-      })
-
-      if (activeOrder && activeOrder.total_price < total_price) {
-        return {
-          success: false,
-          message: `Order ${orderId} with status ${orderStatus} can't have GMV greater than active order`,
         }
       }
     }
@@ -305,7 +264,7 @@ export const getErrorCode = (error: any): string => {
 
 export const insertHighestGmvAndOrder = async (highestOrderGameId: string, highestGmvGameId: string) => {
   try {
-    console.log("highestOrderGameId", highestOrderGameId, "highestGmvGameId", highestGmvGameId)
+    logger.info("highestOrderGameId", highestOrderGameId, "highestGmvGameId", highestGmvGameId)
 
     // Create record of daily winners
     const result = await prisma.highestgmvandhighestorderofday.create({

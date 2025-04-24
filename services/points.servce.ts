@@ -5,29 +5,6 @@ import { insertHighestGmvAndOrder } from "../shared/utils"
 
 export const aggregatePointsSummary = async () => {
   try {
-    // const aggregatedData: aggregatedData[] = await prisma.$queryRaw`
-    //         SELECT game_id,  
-    //                COUNT(order_id) AS total_orders, 
-    //                SUM(gmv) AS
-    //         FROM "orderData"
-    //         GROUP BY game_id;
-    //     `
-
-    // // Upsert aggregated data into leaderboard
-    // for (const { game_id, total_points, total_orders, total_gmv } of aggregatedData) {
-    //   const data = {
-    //     game_id,
-    //     total_points: Number(total_points),
-    //     total_orders: Number(total_orders),
-    //     total_gmv: Number(total_gmv),
-    //   }
-    //   await prisma.leaderboard.upsert({
-    //     where: { game_id },
-    //     update: data,
-    //     create: data,
-    //   })
-    // }
-
     await createOrRefreshLeaderboardView()
     await createOrRefreshWeeklyLeaderboardView()
     await createOrRefreshMonthlyLeaderboardView()
@@ -441,12 +418,11 @@ latest_order AS (
 
 SELECT * FROM latest_order
       `
-    console.log("highestGMV", highestGMV, "highestOrders", highestOrders)
     highestGMV.length > 0 &&
       highestOrders.length > 0 &&
       insertHighestGmvAndOrder(highestOrders[0]?.game_id, highestGMV[0]?.game_id)
   } catch (error: any) {
-    console.log("error", error)
+    logger.error("error", error)
   }
 }
 

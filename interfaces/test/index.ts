@@ -20,7 +20,7 @@ export interface OrderRecord {
   order_status: string
   timestamp_created: Date
   timestamp_updated: Date
-  buyer_app_id?: string
+  buyer_app_id: string
   buyer_name: string
   total_price: number
 }
@@ -58,7 +58,6 @@ export interface aggregatedData {
   total_orders: string
   total_gmv: string
 }
-
 export interface NormalizedRow {
   [key: string]: string | undefined
 }
