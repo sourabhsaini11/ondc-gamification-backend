@@ -39,7 +39,7 @@ const orderController = {
 
       const name = req.user?.email.split("@")[0]
       logger.info("name", name, req.user)
-      const result = await parseAndStoreCsv(filePath, 1, "naval")
+      const result = await parseAndStoreCsv(filePath, req.user.userId, name)
 
       if (!result.success) {
         return res.status(400).json({ success: false, message: result.message })

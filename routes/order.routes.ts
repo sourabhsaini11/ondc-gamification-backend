@@ -6,7 +6,7 @@ import { authenticate } from "../middleware/auth.middleware"
 const orderRouter = Router()
 const upload = multer({ dest: " uploads/" })
 //upload
-orderRouter.post("/upload-csv", upload.single("file"), orderController.uploadCsv)
+orderRouter.post("/upload-csv", authenticate, upload.single("file"), orderController.uploadCsv)
 orderRouter.get("/uploads", authenticate, orderController.getUserUploads)
 orderRouter.get("/search", orderController.search)
 //leaderboard
