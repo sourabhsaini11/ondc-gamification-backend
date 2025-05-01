@@ -7,7 +7,7 @@ import { Readable } from "stream"
 import moment from "moment-timezone"
 import { prisma } from "../prisma/index"
 import { logger } from "../shared/logger"
-import { FullProcessedOrderRecord, NormalizedRow, OrderRecord, cancelledOrders } from "interfaces/test"
+import { FullProcessedOrderRecord, OrderRecord, CancelledOrders, Normalizedkeys } from "interfaces/test"
 import { s3Client } from "../shared/s3client"
 import {
   validatePhoneNumber,
@@ -76,7 +76,7 @@ export const parseAndStoreCsv = async (
 
                 return [normalizedKey, value]
               }),
-            ) as NormalizedRow
+            ) as Normalizedkeys
 
             if (check) {
               return reject({
@@ -86,10 +86,10 @@ export const parseAndStoreCsv = async (
             }
 
             //order status checks, valid status, duplicate status
-            const orderId: string = normalizedRow["order_id"]
+            const orderId: string = normalizedRow["order_id"] || ""
             const orderStatus: string = String(normalizedRow["order_status"])?.toLowerCase()
             const totalPrice: number = parseFloat(String(normalizedRow["total_price"]))
-            const timestampStr: string = normalizedRow["timestamp_created"]
+            const timestampStr: string = normalizedRow["timestamp_created"] || ""
             const timestampCreated: Date = moment
               .tz(timestampStr, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata")
               .add(5, "hours")
@@ -129,7 +129,7 @@ export const parseAndStoreCsv = async (
             }
 
             // check for invalid phone_number
-            const isInvalidPhoneNumber = validatePhoneNumber(normalizedRow["phone_number"], rowCount)
+            const isInvalidPhoneNumber = validatePhoneNumber(normalizedRow["phone_number"] || "", rowCount)
             if (!isInvalidPhoneNumber.success) {
               return reject({
                 success: false,
@@ -152,7 +152,7 @@ export const parseAndStoreCsv = async (
 
             recordMap.set(orderId as string, {
               orderStatus: normalizedRow["order_status"] as string,
-              totalPrice: normalizedRow["total_price"] as number
+              totalPrice: Number(normalizedRow["total_price"]),
             })
           } catch (error: any) {
             logger.info("error", error)
@@ -513,7 +513,7 @@ const getTodayOrderCount = async (uid: string, timestamp: Date, order_id: string
     const endOfDay = new Date(timestamp)
     endOfDay.setHours(23, 59, 59, 999)
 
-    const cancelledOrders: cancelledOrders[] = await prisma.orderData.findMany({
+    const cancelledOrders: CancelledOrders[] = await prisma.orderData.findMany({
       where: {
         uid: uid,
         timestamp_created: {
@@ -527,7 +527,7 @@ const getTodayOrderCount = async (uid: string, timestamp: Date, order_id: string
       },
     })
 
-    const cancelledOrderIds = cancelledOrders.map((order: cancelledOrders) => order.order_id)
+    const cancelledOrderIds = cancelledOrders.map((order: CancelledOrders) => order.order_id)
 
     if (order_id) {
       cancelledOrderIds.push(order_id)

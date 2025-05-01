@@ -32,14 +32,12 @@ export interface FullProcessedOrderRecord
   timestamp_created: string
   timestamp_updated: string
   game_id: string
-  // points: number
   entry_updated: boolean
   streak_maintain: boolean
   highest_gmv_for_day: boolean
   highest_orders_for_day: boolean
   same_day_order_count?: number
-  streak_count?: number
-  // gmv: number
+  streak_count: number
   last_streak_date: any
 }
 
@@ -48,17 +46,17 @@ export interface OrderStatusValidationResult {
   message?: string
 }
 
-export interface cancelledOrders {
+export interface CancelledOrders {
   order_id: string
 }
 
-export interface aggregatedData {
+export interface AggregatedData {
   game_id: string
   total_points: string
   total_orders: string
   total_gmv: string
 }
 
-export interface NormalizedRow {
+export interface Normalizedkeys {
   [key: string]: string | undefined
 }

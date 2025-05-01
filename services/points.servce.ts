@@ -1,12 +1,12 @@
 import { Leaderboard } from "@prisma/client"
 import { insertrewardledgertesting } from "./index"
-import { aggregatedData } from "interfaces/test"
+import { AggregatedData } from "interfaces/test"
 import { logger } from "../shared/logger"
 import { prisma } from "../prisma/index"
 
 export const aggregatePointsSummary = async () => {
   try {
-    const aggregatedData: aggregatedData[] = await prisma.$queryRaw`
+    const aggregatedData: AggregatedData[] = await prisma.$queryRaw`
             SELECT game_id, 
                    SUM(points) AS total_points, 
                    COUNT(order_id) AS total_orders, 

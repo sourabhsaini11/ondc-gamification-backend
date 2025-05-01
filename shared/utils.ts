@@ -250,7 +250,7 @@ export const checkForDuplicates = async (
           buyer_app_id: buyerAppId,
         },
         orderBy: {
-          created_at: 'desc',
+          timestamp_created: "desc",
         },
         select: {
           total_price: true,
