@@ -472,7 +472,7 @@ SELECT * FROM latest_order
         highestGMV[0]?.order_timestamp_created,
       )
   } catch (error: any) {
-    console.log("error", error)
+    logger.error("error", error)
   }
 }
 

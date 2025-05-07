@@ -174,7 +174,7 @@ export const validateCSVHeadersStrict = (filePath: string): { success: boolean; 
     const content = fs.readFileSync(filePath, "utf8")
 
     const firstLine = content.split("\n")[0]
-    console.log("First line:", firstLine)
+    logger.info("First line:", firstLine)
 
     const normalizedHeaders = firstLine.split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"))
 

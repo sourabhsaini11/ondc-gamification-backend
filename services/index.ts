@@ -69,9 +69,9 @@ export const parseAndStoreCsv = async (
                   }
                 }
 
-                if (key == "order_status") {
-                  const normalizedValue = key.trim().toLowerCase().replace(/\s+/g, "_")
-                  value = normalizedValue
+                if (key === "order_status") {
+                  const normalizedkey = key.trim().toLowerCase().replace(/\s+/g, "_")
+                  logger.info(normalizedkey)
                 }
 
                 return [normalizedKey, value]
@@ -662,7 +662,7 @@ export const downloadleaderboard = async (type: string) => {
     const cleanResult = convertBigIntToString(result)
     return { result: cleanResult }
   } catch (error) {
-    console.log(error)
+    logger.error(error)
     throw new Error("failed to fetch leaderboard")
   }
 }
