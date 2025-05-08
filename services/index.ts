@@ -17,7 +17,7 @@ import {
   getCsvLineCount,
   validateCSVHeadersStrict,
   checkForDuplicates,
-  getErrorCode
+  getErrorCode,
 } from "../shared/utils"
 
 export const parseAndStoreCsv = async (
@@ -26,7 +26,7 @@ export const parseAndStoreCsv = async (
   buyer_name: string,
 ): Promise<{ success: boolean; message: string }> => {
   const records: OrderRecord[] = []
-  const recordMap = new Map<string, { orderStatus: string; totalPrice: number }>()
+  const recordMap = new Map<string, { orderStatus: string; totalPrice: number; buyerAppId: string; uid: string }>()
   let rowCount = 0
   // eslint-disable-next-line no-async-promise-executor
   return new Promise(async (resolve, reject) => {
@@ -153,6 +153,8 @@ export const parseAndStoreCsv = async (
             recordMap.set(orderId as string, {
               orderStatus: normalizedRow["order_status"] as string,
               totalPrice: Number(normalizedRow["total_price"]),
+              buyerAppId: String(userId),
+              uid: String(normalizedRow["phone_number"])?.trim()
             })
           } catch (error: any) {
             logger.info("error", error)
@@ -172,7 +174,6 @@ export const parseAndStoreCsv = async (
               message: "No valid records found in the CSV file",
             })
           }
-
 
           const newOrders: OrderRecord[] = []
           const cancellations: OrderRecord[] = []
@@ -198,7 +199,7 @@ export const parseAndStoreCsv = async (
           }
 
           if (cancellations.length > 0) {
-            const response = await processCancellations(cancellations)
+            const response = await processCancellations(cancellations, processedOrders)
             if (!response?.error) processedOrders = processedOrders.concat(response.processedData)
             else return reject({ success: false, message: response?.message })
           }
@@ -325,7 +326,6 @@ const processNewOrders = async (orders: any) => {
           timestamp_updated: new Date().toISOString(),
           uid: uid,
         })
-
       } catch (err: any) {
         logger.error(`Error processing new order: ${err.message}`)
         return {
@@ -347,11 +347,22 @@ const processNewOrders = async (orders: any) => {
   }
 }
 
-const processCancellationRow = async (row: any) => {
+const processCancellationRow = async (row: any, activeOrder: FullProcessedOrderRecord[]) => {
   try {
     const orderId = row.order_id
     const orderStatus = (row.order_status || "").toLowerCase()
+    const buyerAppId = row.buyer_app_id
     const timestampCreated: Date = row.timestamp_created
+
+    // checking that this orderid is exist in activeOrder with same buyerId as of row and if it take the game_id
+    const res: any = activeOrder.filter(
+      (itm: any) =>
+        itm.order_id === orderId &&
+        itm.buyer_app_id === buyerAppId &&
+        (itm.order_status === "active" || itm.order_status === "partially_cancelled"),
+    )
+
+    //checking in db
     const possibleOrders = await prisma.orderData.findMany({
       where: {
         order_id: orderId,
@@ -368,17 +379,21 @@ const processCancellationRow = async (row: any) => {
     const originalOrder = possibleOrders[0]
     logger.info("originalOrder in cancellation", originalOrder)
 
-    if (!originalOrder) {
+    if (!originalOrder && res.length === 0) {
       logger.info(`Original order not found for cancellation: ${orderId}`)
       throw new Error(`Original order not found for cancellation: ${orderId}`)
     }
 
-    const {
-      game_id: gameId,
-      uid,
-      last_streak_date,
-      //  gmv: originalGmv, order_status
-    } = originalOrder
+    let gameId, uid, last_streak_date
+    if (originalOrder) {
+      gameId = originalOrder.game_id
+      uid = originalOrder.uid
+      last_streak_date = originalOrder.last_streak_date
+    } else {
+      gameId = res[0].game_id
+      uid = res[0].uid
+      last_streak_date = res[0].last_streak_date
+    }
 
     return {
       ...row,
@@ -387,12 +402,11 @@ const processCancellationRow = async (row: any) => {
       streak_maintain: true,
       highest_gmv_for_day: false,
       highest_orders_for_day: false,
-      // updated_by_lambda: new Date().toISOString(),
       timestamp_created: timestampCreated.toISOString(),
       timestamp_updated: new Date().toISOString(),
       uid: uid,
       order_status: orderStatus,
-      last_streak_date,
+      last_streak_date: new Date().toISOString() || last_streak_date,
     }
   } catch (err) {
     logger.error(`Error processing cancellation for order ${row.order_id}: ${err}`)
@@ -400,7 +414,10 @@ const processCancellationRow = async (row: any) => {
   }
 }
 
-const processCancellations = async (cancellations: OrderRecord[]): Promise<FullProcessedOrderRecord[] | any> => {
+const processCancellations = async (
+  cancellations: OrderRecord[],
+  activeOrders: FullProcessedOrderRecord[],
+): Promise<FullProcessedOrderRecord[] | any> => {
   const processedData = []
   logger.info("Showing Cancellation orders!")
 
@@ -409,7 +426,7 @@ const processCancellations = async (cancellations: OrderRecord[]): Promise<FullP
   try {
     for (const row of partiallyCancelled) {
       try {
-        const data = await processCancellationRow(row)
+        const data = await processCancellationRow(row, activeOrders)
         processedData.push(data)
       } catch (err) {
         logger.error(`Error processing partial cancellation for order ${row.order_id}:`, err)
@@ -423,7 +440,7 @@ const processCancellations = async (cancellations: OrderRecord[]): Promise<FullP
 
     for (const row of cancelled) {
       try {
-        const data = await processCancellationRow(row)
+        const data = await processCancellationRow(row, activeOrders)
         processedData.push(data)
       } catch (err) {
         logger.error(`Error processing cancellation for order ${row.order_id}:`, err)
@@ -553,8 +570,8 @@ const getTodayOrderCount = async (uid: string, timestamp: Date, order_id: string
   }
 }
 
-const bulkInsertDataIntoDb = async (data: any) => {
-  logger.info("row", JSON.stringify(data[0]?.buyer_app_id))
+const bulkInsertDataIntoDb = async (data: FullProcessedOrderRecord[]) => {
+  logger.info("data", JSON.stringify(data))
   try {
     const insertedData = await prisma.orderData.createMany({
       data: data,
@@ -715,7 +732,7 @@ export async function listTodayFiles() {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const startOfToday = today.getTime()
-  const endOfToday = startOfToday + 86400000 
+  const endOfToday = startOfToday + 86400000
 
   const command = new ListObjectsV2Command({
     Bucket: process.env.AWS_S3_BUCKET_NAME,
@@ -727,7 +744,7 @@ export async function listTodayFiles() {
     result.Contents?.filter((obj) => {
       const key = obj.Key || ""
       const parts = key.split("/")
-      const timestampStr = parts[2] 
+      const timestampStr = parts[2]
       const timestamp = parseInt(timestampStr, 10)
       return timestamp >= startOfToday && timestamp < endOfToday
     }) || []
@@ -737,7 +754,7 @@ export async function listTodayFiles() {
     return {
       key: file.Key!,
       buyer_app: parts[1],
-      buyer_app_id: parts[2], 
+      buyer_app_id: parts[2],
     }
   })
 }
@@ -842,4 +859,3 @@ function extractOrdersFromCSV(content: string): Record<string, string>[] {
     })
     .filter((row): row is Record<string, string> => row !== null)
 }
-

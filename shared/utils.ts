@@ -56,7 +56,7 @@ export const validateTotalPrice = (total_price: number, index: number): OrderSta
 export const validateOrderTimestamp = (orders: OrderRecord[]): OrderStatusValidationResult => {
   const now = new Date()
   const oneDayLater = new Date()
-  oneDayLater.setDate(now.getDate() + 1) 
+  oneDayLater.setDate(now.getDate() + 1)
 
   for (const order of orders) {
     const { order_id, timestamp_created: timestamp } = order
@@ -103,7 +103,7 @@ export const uploadToS3 = async (
       params: uploadParams,
     })
 
-    const result:any = await upload.done()
+    const result: any = await upload.done()
     return { success: true, url: result?.Location }
   } catch (error: any) {
     logger.error("S3 Upload Error (v3):", error)
@@ -162,7 +162,7 @@ export function getCsvLineCount(filePath: string): number {
     const output = execSync(`wc -l < "${resolvedPath}"`).toString().trim()
     const numLines = parseInt(output, 10)
 
-    return numLines 
+    return numLines
   } catch (err: any) {
     console.error("Error running wc -l:", err.message)
     return -1
@@ -202,13 +202,17 @@ export const checkForDuplicates = async (
   orderId: string,
   orderStatus: string,
   buyerAppId: string,
-  recordMap: Map<string, { orderStatus: string; totalPrice: number }>,
+  recordMap: Map<string, { orderStatus: string; totalPrice: number; buyerAppId: string; uid: string;}>,
   total_price: number,
 ): Promise<{ success: boolean; message?: string }> => {
   try {
     if (recordMap.has(orderId)) {
       const existing = recordMap.get(orderId)
-      if ((existing?.orderStatus.toLowerCase() === orderStatus.toLowerCase()) && existing?.orderStatus !== "partially_cancelled") {
+      if (
+        existing?.orderStatus.toLowerCase() === orderStatus.toLowerCase() &&
+        existing.buyerAppId === buyerAppId &&
+        existing?.orderStatus !== "partially_cancelled"
+      ) {
         return {
           success: false,
           message: `Duplicate order ${orderId} with status ${orderStatus} in the current batch`,
@@ -226,22 +230,22 @@ export const checkForDuplicates = async (
       }
     }
 
-    if (orderStatus !== 'partially_cancelled') {
-    const existingOrderInDb = await prisma.orderData.findFirst({
-      where: {
-        order_id: orderId,
-        order_status: orderStatus,
-        buyer_app_id: buyerAppId,
-      }
-    })
+    if (orderStatus !== "partially_cancelled") {
+      const existingOrderInDb = await prisma.orderData.findFirst({
+        where: {
+          order_id: orderId,
+          order_status: orderStatus,
+          buyer_app_id: buyerAppId,
+        },
+      })
 
-    if (existingOrderInDb) {
-      return {
-        success: false,
-        message: `Order ${orderId} with status ${orderStatus} already exists in the database`,
+      if (existingOrderInDb) {
+        return {
+          success: false,
+          message: `Order ${orderId} with status ${orderStatus} already exists in the database`,
+        }
       }
     }
-  }
 
     if (orderStatus.toLowerCase() === "partially_cancelled" || orderStatus.toLowerCase() === "cancelled") {
       const activeOrder = await prisma.orderData.findFirst({
@@ -256,6 +260,20 @@ export const checkForDuplicates = async (
           total_price: true,
         },
       })
+
+      const checkinalreadycancelled = await prisma.orderData.findFirst({
+        where: {
+          order_id: orderId,
+          buyer_app_id: buyerAppId,
+          order_status: "cancelled",
+        },
+      })
+      if (checkinalreadycancelled) {
+        return {
+          success: false,
+          message: `Order ${orderId} is already cancelled`,
+        }
+      }
 
       if (activeOrder && activeOrder.total_price < total_price) {
         return {
@@ -285,8 +303,7 @@ export const getErrorCode = (error: any): string => {
       return temp
     } else {
       logger.error("Error Message:", message)
-      return 'Error inserting bulk data'
+      return "Error inserting bulk data"
     }
-  } else
-  return 'Error inserting bulk data'
+  } else return "Error inserting bulk data"
 }
