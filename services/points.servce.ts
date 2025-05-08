@@ -1,17 +1,12 @@
-import { Leaderboard, PrismaClient } from "@prisma/client"
+import { Leaderboard } from "@prisma/client"
 import { insertrewardledgertesting } from "./index"
-const prisma = new PrismaClient()
-
-type aggregatedData = {
-  game_id: string
-  total_points: string
-  total_orders: string
-  total_gmv: string
-}
+import { AggregatedData } from "interfaces/test"
+import { logger } from "../shared/logger"
+import { prisma } from "../prisma/index"
 
 export const aggregatePointsSummary = async () => {
   try {
-    const aggregatedData: aggregatedData[] = await prisma.$queryRaw`
+    const aggregatedData: AggregatedData[] = await prisma.$queryRaw`
             SELECT game_id, 
                    SUM(points) AS total_points, 
                    COUNT(order_id) AS total_orders, 
@@ -44,7 +39,7 @@ export const aggregatePointsSummary = async () => {
       body: `Updated ${aggregatedData.length} records in leaderboard`,
     }
   } catch (error) {
-    console.error("Error aggregating points summary:", error)
+    logger.error("Error aggregating points summary:", error)
     return { statusCode: 500, body: "Internal Server Error" }
   }
 }
@@ -60,7 +55,6 @@ export const createOrRefreshLeaderboardView = async () => {
     //   AND timestamp_created < (${todayDate}::DATE + INTERVAL '1 day');
     // `
 
-    // Create or replace the daily leaderboard view
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS daily_top_leaderboard;`)
 
     const previewResults = await prisma.$executeRawUnsafe(`
@@ -91,7 +85,7 @@ ORDER BY total_points DESC;
       body: `Leaderboard view updated for ${todayDate}, ${previewResults}`,
     }
   } catch (error) {
-    console.error("Error creating/updating leaderboard view:", error)
+    logger.error("Error creating/updating leaderboard view:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -101,13 +95,11 @@ ORDER BY total_points DESC;
 
 export const createOrRefreshWeeklyLeaderboardView = async () => {
   try {
-    // Get today's date and determine the start of the current week (Monday)
     const todayDate = new Date()
     const currentWeekStart = new Date(todayDate)
     currentWeekStart.setDate(todayDate.getDate() - todayDate.getDay() + (todayDate.getDay() === 0 ? -6 : 1)) // Monday of this week
     const currentWeekStartStr = currentWeekStart.toISOString().split("T")[0] // YYYY-MM-DD
 
-    // Check if the leaderboard view exists
     const viewCheck: any = await prisma.$queryRaw`
         SELECT EXISTS (
           SELECT 1 FROM information_schema.views 
@@ -118,7 +110,6 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
     const viewExists = viewCheck[0]?.view_exists
 
     if (viewExists) {
-      // Get the last week's start date from the existing view
       const lastWeekCheck: any = await prisma.$queryRaw`
           SELECT DISTINCT leaderboard_week_start FROM weekly_top_leaderboard LIMIT 1;
         `
@@ -126,7 +117,7 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
       const lastWeekStart = lastWeekCheck.length > 0 ? lastWeekCheck[0].leaderboard_week_start : null
 
       if (lastWeekStart && lastWeekStart.toISOString().split("T")[0] !== currentWeekStartStr) {
-        console.log(`Week changed from ${lastWeekStart} to ${currentWeekStartStr}. Resetting weekly leaderboard view.`)
+        logger.info(`Week changed from ${lastWeekStart} to ${currentWeekStartStr}. Resetting weekly leaderboard view.`)
       }
     }
 
@@ -156,13 +147,13 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
       ORDER BY total_points DESC;
     `)
 
-    console.log(`Weekly leaderboard view updated for the week starting ${currentWeekStartStr}., ${previewResults}`)
+    logger.info(`Weekly leaderboard view updated for the week starting ${currentWeekStartStr}., ${previewResults}`)
     return {
       statusCode: 200,
       body: `Weekly leaderboard view created/updated for the week starting ${currentWeekStartStr}, ${previewResults}.`,
     }
   } catch (error) {
-    console.error("Error creating/updating weekly leaderboard view:", error)
+    logger.error("Error creating/updating weekly leaderboard view:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -172,16 +163,10 @@ export const createOrRefreshWeeklyLeaderboardView = async () => {
 
 export const createOrRefreshMonthlyLeaderboardView = async () => {
   try {
-    // Get today's date
     const todayDate = new Date()
-
-    // Explicitly calculate the start of the current month (1st day of this month) in UTC
     const currentMonthStart = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), 1))
-
-    // Convert the calculated date to a string format YYYY-MM-DD
     const currentMonthStartStr = currentMonthStart.toISOString().split("T")[0] // YYYY-MM-DD
 
-    // Check if the leaderboard view exists
     const viewCheck: any = await prisma.$queryRaw`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.views 
@@ -190,9 +175,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
     `
 
     const viewExists = viewCheck[0]?.view_exists
-
     if (viewExists) {
-      // Check the last recorded month in the existing leaderboard view
       const lastMonthCheck: any = await prisma.$queryRaw`
             SELECT DISTINCT leaderboard_month_start FROM monthly_top_leaderboard LIMIT 1;
           `
@@ -202,9 +185,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
       }
     }
 
-    // Drop the view if it exists and recreate it with updated logic
     await prisma.$executeRawUnsafe(`DROP VIEW IF EXISTS monthly_top_leaderboard`)
-
     const previewResults = await prisma.$executeRawUnsafe(`
       CREATE VIEW monthly_top_leaderboard AS
       WITH valid_orders AS (
@@ -229,7 +210,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
       ORDER BY total_points DESC;
     `)
 
-    console.log(
+    logger.info(
       `Monthly leaderboard view updated for the week starting ${currentMonthStart.toISOString().split("T")[0]}., ${previewResults}`,
     )
 
@@ -238,7 +219,7 @@ export const createOrRefreshMonthlyLeaderboardView = async () => {
       body: `Monthly leaderboard view created/updated for the month starting ${currentMonthStartStr}.`,
     }
   } catch (error) {
-    console.error("Error creating/updating monthly leaderboard view:", error)
+    logger.error("Error creating/updating monthly leaderboard view:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -263,7 +244,7 @@ export const getDailyLeaderboardData = async () => {
       body: updatedData,
     }
   } catch (error) {
-    console.error("Error fetching daily leaderboard data:", error)
+    logger.error("Error fetching daily leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -290,7 +271,7 @@ export const getWeeklyLeaderboardData = async () => {
       body: updatedData,
     }
   } catch (error) {
-    console.error("Error fetching weekly leaderboard data:", error)
+    logger.error("Error fetching weekly leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -305,15 +286,15 @@ export const getAllTimeLeaders = async () => {
       SELECT order_id
       FROM public."orderData"
       GROUP BY order_id
-      HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
+      HAVING BOOL_AND(order_status <> 'cancelled')  
   )
   SELECT
       r.game_id,
       COALESCE(SUM(r.points), 0) AS total_points,
-      COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+      COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  
       COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv
   FROM public."rewardledger" r 
-  WHERE r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+  WHERE r.order_id IN (SELECT order_id FROM valid_orders) 
   GROUP BY r.game_id
   ORDER BY total_points DESC;
 `
@@ -330,7 +311,7 @@ export const getAllTimeLeaders = async () => {
       body: updatedData,
     }
   } catch (error) {
-    console.error("Error fetching all time leaderboard data:", error)
+    logger.error("Error fetching all time leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -351,7 +332,7 @@ export const fetchLeaderboardData = async () => {
       body: leaderboardData,
     }
   } catch (error) {
-    console.error("Error fetching leaderboard data:", error)
+    logger.error("Error fetching leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -381,177 +362,13 @@ const storePastWinners = async (leaderboardTable: string, type: string) => {
       })
     }
   } catch (error) {
-    console.error(`Error storing ${type} winners:`, error)
-  }
-}
-
-export const checkDailyWinnerCancellation = async () => {
-  try {
-    const previousDay = new Date()
-    previousDay.setDate(previousDay.getDate() - 1)
-    previousDay.setHours(0, 0, 0, 0)
-
-    const previousDayEnd = new Date(previousDay)
-    previousDayEnd.setHours(23, 59, 59, 999)
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    const todayEnd = new Date(today)
-    todayEnd.setHours(23, 59, 59, 999)
-
-    const dailyWinner = await prisma.orderData.groupBy({
-      by: ["uid"],
-      _sum: { points: true },
-      where: {
-        timestamp_created: {
-          gte: previousDay,
-          lte: previousDayEnd,
-        },
-        highest_gmv_for_day: true,
-      },
-      orderBy: {
-        _sum: { points: "desc" },
-      },
-      take: 2,
-    })
-
-    if (!dailyWinner.length) {
-      console.log("No winner found for the previous day.")
-      return
-    }
-
-    const winnerUid = dailyWinner[0].uid
-
-    const canceledOrders = await prisma.orderData.findMany({
-      where: {
-        uid: winnerUid,
-        timestamp_created: {
-          gte: today,
-          lte: todayEnd,
-        },
-        order_status: "cancelled",
-      },
-    })
-
-    if (canceledOrders.length > 0 && dailyWinner.length > 0) {
-      const firstWinner = dailyWinner[0]
-      const secondWinner = dailyWinner[1]
-
-      if (firstWinner?._sum?.points != null && secondWinner?._sum?.points != null) {
-        if (firstWinner._sum.points < secondWinner._sum.points) {
-          // await handleOrderCancellationAndViolation(winnerUid, "daily", 1)
-          await prisma.orderData.updateMany({
-            where: {
-              uid: winnerUid,
-              timestamp_created: {
-                gte: previousDay,
-                lte: previousDayEnd,
-              },
-            },
-            data: {
-              highest_gmv_for_day: false,
-              highest_orders_for_day: false,
-            },
-          })
-        } else {
-          console.log("winner position has not been affected")
-        }
-      } else {
-        console.log("One of the winners has missing points data.")
-      }
-    } else {
-      console.log(`Winner ${winnerUid} did not cancel orders today. Status remains for the previous day.`)
-    }
-  } catch (error) {
-    console.error("Error checking daily winner cancellations:", error)
-  }
-}
-
-export const checkWeeklyWinnerCancellation = async () => {
-  try {
-    const startOfWeek1 = new Date()
-    startOfWeek1.setDate(startOfWeek1.getDate() - (startOfWeek1.getDay() + 7))
-    startOfWeek1.setHours(0, 0, 0, 0)
-
-    const endOfWeek1 = new Date(startOfWeek1)
-    endOfWeek1.setDate(startOfWeek1.getDate() + 6)
-    endOfWeek1.setHours(23, 59, 59, 999)
-
-    const startOfWeek2 = new Date()
-    startOfWeek2.setDate(startOfWeek2.getDate() - startOfWeek2.getDay())
-    startOfWeek2.setHours(0, 0, 0, 0)
-
-    const endOfWeek2 = new Date(startOfWeek2)
-    endOfWeek2.setDate(startOfWeek2.getDate() + 6)
-    endOfWeek2.setHours(23, 59, 59, 999)
-
-    // Find the winner for the previous week (week_1)
-    const weeklyWinner = await prisma.orderData.groupBy({
-      by: ["uid"],
-      _sum: { points: true },
-      where: {
-        timestamp_created: {
-          gte: startOfWeek1,
-          lte: endOfWeek1,
-        },
-        highest_gmv_for_day: true,
-      },
-      orderBy: {
-        _sum: { points: "desc" },
-      },
-      take: 1,
-    })
-
-    if (!weeklyWinner.length) {
-      console.log("No winner found for the previous week.")
-      return
-    }
-
-    const winnerUid = weeklyWinner[0].uid
-
-    // Check if the winner canceled any orders in Week 2 (this week)
-    const canceledOrdersInWeek2 = await prisma.orderData.findMany({
-      where: {
-        uid: winnerUid,
-        timestamp_created: {
-          gte: startOfWeek2,
-          lte: endOfWeek2,
-        },
-        order_status: "cancelled",
-      },
-    })
-
-    if (canceledOrdersInWeek2.length > 0) {
-      // If they have canceled orders in Week 2, remove their winner status for Week 1
-      await prisma.orderData.updateMany({
-        where: {
-          uid: winnerUid,
-          timestamp_created: {
-            gte: startOfWeek1,
-            lte: endOfWeek1,
-          },
-        },
-        data: {
-          highest_gmv_for_day: false,
-          highest_orders_for_day: false,
-        },
-      })
-
-      // Call handleOrderCancellationAndViolation to track violation and adjust points/status
-      // await handleOrderCancellationAndViolation(winnerUid, "weekly", 1)
-    } else {
-      console.log(`Winner ${winnerUid} did not cancel orders in Week 2. Status remains for Week 1.`)
-    }
-  } catch (error) {
-    console.error("Error checking weekly winner cancellations:", error)
+    logger.error(`Error storing ${type} winners:`, error)
   }
 }
 
 export const highestGmvandhighestOrder = async () => {
   try {
     const todayDate = new Date()
-    // today highest order and highest gmv
     const highestOrders: any = await prisma.$queryRaw`
       WITH daily_orders AS (
     SELECT 
@@ -655,7 +472,7 @@ SELECT * FROM latest_order
         highestGMV[0]?.order_timestamp_created,
       )
   } catch (error: any) {
-    console.log("error", error)
+    logger.error("error", error)
   }
 }
 
@@ -674,18 +491,18 @@ export const fetchLeaderboardForWeek = async (date: string) => {
           SELECT order_id
           FROM public."orderData"
           GROUP BY order_id
-          HAVING BOOL_AND(order_status <> 'cancelled')  -- Exclude orders where any entry is 'cancelled'
+          HAVING BOOL_AND(order_status <> 'cancelled')  
       )
       SELECT
           r.game_id,
           COALESCE(SUM(r.points), 0) AS total_points,
-          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  -- Only count valid order_ids
+          COUNT(DISTINCT r.order_id)::BIGINT AS total_orders,  
           COALESCE(SUM(r.gmv), 0)::BIGINT AS total_gmv,
           ${currentWeekStartStr}::DATE AS leaderboard_week_start
       FROM public."rewardledgertesting" r 
       WHERE DATE(r.created_at) >= ${currentWeekStartStr}::DATE
         AND DATE(r.created_at) < ${endDateStr}::DATE
-        AND r.order_id IN (SELECT order_id FROM valid_orders)  -- Only include non-cancelled order_ids
+        AND r.order_id IN (SELECT order_id FROM valid_orders)  
       GROUP BY r.game_id
       ORDER BY total_points DESC;
     `
@@ -701,7 +518,7 @@ export const fetchLeaderboardForWeek = async (date: string) => {
       body: formattedLeaderboard,
     }
   } catch (error) {
-    console.error("Error fetching weekly leaderboard:", error)
+    logger.error("Error fetching weekly leaderboard:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -744,7 +561,7 @@ export const getLeaderboardByDate = async (date: string) => {
       body: formattedLeaderboard,
     }
   } catch (error) {
-    console.error("Error fetching leaderboard:", error)
+    logger.error("Error fetching leaderboard:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
@@ -771,7 +588,7 @@ export const getMonthlyLeaderboardData = async () => {
       body: updatedData,
     }
   } catch (error) {
-    console.error("Error fetching monthly leaderboard data:", error)
+    logger.error("Error fetching monthly leaderboard data:", error)
     return {
       statusCode: 500,
       body: "Internal Server Error",
